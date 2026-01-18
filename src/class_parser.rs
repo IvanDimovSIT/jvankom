@@ -200,15 +200,6 @@ impl ClassParser {
         }
     }
 
-    fn skip(&mut self, bytes_to_skip: usize) -> Result<(), ClassParserError> {
-        self.index += bytes_to_skip;
-        if self.index > self.bytes.len() {
-            Err(ClassParserError::UnexpectedEndOfFile)
-        } else {
-            Ok(())
-        }
-    }
-
     fn read_u8(&mut self) -> u8 {
         let value = self.bytes[self.index];
         self.index += 1;
@@ -216,11 +207,15 @@ impl ClassParser {
     }
 
     fn read_u16(&mut self) -> u16 {
-        ((self.read_u8() as u16) << 8) | self.read_u8() as u16
+        let high_bits = self.read_u8() as u16;
+        let low_bits = self.read_u8() as u16;
+        (high_bits << 8) | low_bits
     }
 
     fn read_u32(&mut self) -> u32 {
-        ((self.read_u16() as u32) << 16) | self.read_u16() as u32
+        let high_bits = self.read_u16() as u32;
+        let low_bits = self.read_u16() as u32;
+        (high_bits << 16) | low_bits
     }
 
     fn check_left(&self, bytes_to_check: usize) -> bool {
