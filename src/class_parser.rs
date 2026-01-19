@@ -1,6 +1,8 @@
 use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
-use crate::class_file::{Attribute, ClassFile, ConstantValue, Field};
+use crate::class_file::{
+    Attribute, Bytecode, ClassFile, ConstantValue, ExceptionTableEntry, Field,
+};
 
 const CLASS_FILE_MAGIC: u32 = 0xCAFEBABE;
 const UTF8_TAG: u8 = 1;
@@ -149,32 +151,75 @@ impl ClassParser {
         Ok(field)
     }
 
-    fn parse_attribute(&mut self, attribute_name: &str) -> Result<Attribute, ClassParserError> {
+    fn parse_attribute(
+        &mut self,
+        constant_pool: &[ConstantValue],
+        attribute_name_index: usize,
+    ) -> Result<Attribute, ClassParserError> {
         let attribute_length = self.parse_u32()? as usize;
+        let attribute_name = Self::index_utf8(constant_pool, attribute_name_index)?;
+        let start_index = self.index;
         let attribute = match attribute_name {
-            CODE_ATTRIBUTE_NAME => {
-                todo!()
-            }
+            CODE_ATTRIBUTE_NAME => self.parse_bytecode_attribute(constant_pool)?,
             CONSTATNT_VALUE_ATTRIBUTE_NAME => {
-                Self::expect_attribute_length(2, attribute_length)?;
                 let value_index = self.parse_u16()? as usize;
                 Attribute::ConstantValue { value_index }
             }
             SOURCE_FILE_ATTRIBUTE_NAME => {
-                Self::expect_attribute_length(2, attribute_length)?;
                 let sourcefile_index = self.parse_u16()? as usize;
                 Attribute::SourceFile { sourcefile_index }
             }
             _ => {
                 let info = self.parse_byte_array(attribute_length)?;
                 Attribute::Unknown {
-                    name: attribute_name.to_owned(),
+                    name_index: attribute_name_index,
                     info,
                 }
             }
         };
+        let read_bytes = self.index - start_index;
+        Self::expect_attribute_length(attribute_length, read_bytes)?;
 
         Ok(attribute)
+    }
+
+    fn parse_bytecode_attribute(
+        &mut self,
+        constant_pool: &[ConstantValue],
+    ) -> Result<Attribute, ClassParserError> {
+        let max_stack = self.parse_u16()?; // 2 bytes read
+        let max_locals = self.parse_u16()?; // 2 bytes read
+        let code_length = self.parse_u32()? as usize; // 4 bytes read
+        let code = self.parse_byte_array(code_length)?;
+        let exception_table_length = self.parse_u16()? as usize; // 2 bytes read
+
+        let mut exception_table = Vec::with_capacity(exception_table_length);
+        for _ in 0..exception_table_length {
+            let start_pc = self.parse_u16()?;
+            let end_pc = self.parse_u16()?;
+            let handler_pc = self.parse_u16()?;
+            let catch_type = self.parse_u16()?;
+
+            let exception_table_entry = ExceptionTableEntry {
+                start_pc,
+                end_pc,
+                handler_pc,
+                catch_type,
+            };
+            exception_table.push(exception_table_entry)
+        }
+
+        let attributes = self.parse_attributes(constant_pool)?;
+
+        let bytecode = Bytecode {
+            code,
+            max_stack,
+            max_locals,
+            exception_table,
+            attributes,
+        };
+
+        Ok(Attribute::Code(bytecode))
     }
 
     fn expect_attribute_length(expected: usize, actual: usize) -> Result<(), ClassParserError> {
@@ -192,9 +237,9 @@ impl ClassParser {
         let attributes_count = self.parse_u16()? as usize;
         let mut attributes = Vec::with_capacity(attributes_count);
         for _ in 0..attributes_count {
+            const ATTRIBUTE_NAME_INDEX_SIZE: usize = 2;
             let attribute_name_index = self.parse_u16()? as usize;
-            let attribute_name = Self::index_utf8(constant_pool, attribute_name_index)?;
-            let attribute = self.parse_attribute(attribute_name)?;
+            let attribute = self.parse_attribute(constant_pool, attribute_name_index)?;
             attributes.push(attribute);
         }
 

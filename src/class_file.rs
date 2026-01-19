@@ -44,19 +44,32 @@ pub enum ConstantValue {
     Unusable,
 }
 
-pub struct Bytecode {
-    pub code: Vec<u8>,
-    pub max_stack: u32,
-    pub max_locals: u32,
+#[derive(Debug, Clone)]
+pub struct ExceptionTableEntry {
+    pub start_pc: u16,
+    pub end_pc: u16,
+    pub handler_pc: u16,
+    pub catch_type: u16,
 }
 
+#[derive(Debug, Clone)]
+pub struct Bytecode {
+    pub code: Vec<u8>,
+    pub max_stack: u16,
+    pub max_locals: u16,
+    pub exception_table: Vec<ExceptionTableEntry>,
+    pub attributes: Vec<Attribute>,
+}
+
+#[derive(Debug, Clone)]
 pub enum Attribute {
     Code(Bytecode),
     ConstantValue { value_index: usize },
     SourceFile { sourcefile_index: usize },
-    Unknown { name: String, info: Vec<u8> },
+    Unknown { name_index: usize, info: Vec<u8> },
 }
 
+#[derive(Debug, Clone)]
 pub struct Field {
     pub name_index: usize,
     pub descriptor_index: usize,
@@ -64,6 +77,7 @@ pub struct Field {
     pub attributes: Vec<Attribute>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Method {
     pub name: String,
     pub descriptor: String,
@@ -71,6 +85,7 @@ pub struct Method {
     pub bytecode: Option<Bytecode>,
 }
 
+#[derive(Debug, Clone)]
 pub struct ClassFile {
     pub class_index: usize,
     pub super_class_index: Option<NonZeroUsize>,
