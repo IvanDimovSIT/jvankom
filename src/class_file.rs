@@ -8,37 +8,37 @@ pub enum ConstantValue {
     Double(f64),
     Utf8(String),
     Class {
-        name_index: usize,
+        name_index: NonZeroUsize,
     },
     String {
-        utf8_index: usize,
+        utf8_index: NonZeroUsize,
     },
     NameAndType {
-        name_index: usize,
-        descriptor_index: usize,
+        name_index: NonZeroUsize,
+        descriptor_index: NonZeroUsize,
     },
     FieldRef {
-        class_index: usize,
-        name_and_type_index: usize,
+        class_index: NonZeroUsize,
+        name_and_type_index: NonZeroUsize,
     },
     MethodRef {
-        class_index: usize,
-        name_and_type_index: usize,
+        class_index: NonZeroUsize,
+        name_and_type_index: NonZeroUsize,
     },
     InterfaceMethodRef {
-        class_index: usize,
-        name_and_type_index: usize,
+        class_index: NonZeroUsize,
+        name_and_type_index: NonZeroUsize,
     },
     MethodHandle {
         reference_kind: u8,
-        reference_index: usize,
+        reference_index: NonZeroUsize,
     },
     MethodType {
-        descriptor_index: usize,
+        descriptor_index: NonZeroUsize,
     },
     InvokeDynamic {
-        bootstrap_method_attr_index: usize,
-        name_and_type_index: usize,
+        bootstrap_method_attr_index: NonZeroUsize,
+        name_and_type_index: NonZeroUsize,
     },
     /// placeholder after long and double
     Unusable,
@@ -64,15 +64,22 @@ pub struct Bytecode {
 #[derive(Debug, Clone)]
 pub enum Attribute {
     Code(Bytecode),
-    ConstantValue { value_index: usize },
-    SourceFile { sourcefile_index: usize },
-    Unknown { name_index: usize, info: Vec<u8> },
+    ConstantValue {
+        value_index: NonZeroUsize,
+    },
+    SourceFile {
+        sourcefile_index: NonZeroUsize,
+    },
+    Unknown {
+        name_index: NonZeroUsize,
+        info: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub struct Field {
-    pub name_index: usize,
-    pub descriptor_index: usize,
+    pub name_index: NonZeroUsize,
+    pub descriptor_index: NonZeroUsize,
     pub access_flags: u16,
     pub attributes: Vec<Attribute>,
 }
@@ -86,11 +93,38 @@ pub struct Method {
 }
 
 #[derive(Debug, Clone)]
+pub struct ConstantPool {
+    constant_pool_table: Vec<ConstantValue>,
+}
+impl ConstantPool {
+    pub fn new(constant_pool_table: Vec<ConstantValue>) -> Self {
+        Self {
+            constant_pool_table,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.constant_pool_table.len()
+    }
+
+    pub fn get(&self, index: NonZeroUsize) -> &ConstantValue {
+        &self.constant_pool_table[index.get()]
+    }
+
+    pub fn get_utf8(&self, index: NonZeroUsize) -> Option<&str> {
+        match self.get(index) {
+            ConstantValue::Utf8(s) => Some(s),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct ClassFile {
-    pub class_index: usize,
+    pub class_index: NonZeroUsize,
     pub super_class_index: Option<NonZeroUsize>,
-    pub interfaces: Vec<usize>,
-    pub constant_pool: Vec<ConstantValue>,
+    pub interfaces: Vec<NonZeroUsize>,
+    pub constant_pool: ConstantPool,
     pub methods: Vec<Method>,
     pub fields: Vec<Field>,
     pub access_flags: u16,

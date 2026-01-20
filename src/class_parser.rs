@@ -1,7 +1,7 @@
 use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
 use crate::class_file::{
-    Attribute, Bytecode, ClassFile, ConstantValue, ExceptionTableEntry, Field,
+    Attribute, Bytecode, ClassFile, ConstantPool, ConstantValue, ExceptionTableEntry, Field,
 };
 
 const CLASS_FILE_MAGIC: u32 = 0xCAFEBABE;
@@ -100,9 +100,9 @@ impl ClassParser {
         let (_major, _minor) = self.parse_versions()?;
         let constant_pool = self.parse_constant_pool()?;
         let access_flags = self.parse_u16()?;
-        let this_class = self.parse_u16()? as usize;
+        let this_class = self.parse_index(constant_pool.len())?;
         let super_class = self.parse_super_class()?;
-        let interfaces = self.parse_interfaces()?;
+        let interfaces = self.parse_interfaces(constant_pool.len())?;
         let fields = self.parse_fields(&constant_pool)?;
         let methods = todo!();
         let attributes = self.parse_attributes(&constant_pool)?;
@@ -123,7 +123,7 @@ impl ClassParser {
 
     fn parse_fields(
         &mut self,
-        constant_pool: &[ConstantValue],
+        constant_pool: &ConstantPool,
     ) -> Result<Vec<Field>, ClassParserError> {
         let fields_count = self.parse_u16()? as usize;
         let mut fields = Vec::with_capacity(fields_count);
@@ -135,10 +135,10 @@ impl ClassParser {
         Ok(fields)
     }
 
-    fn parse_field(&mut self, constant_pool: &[ConstantValue]) -> Result<Field, ClassParserError> {
+    fn parse_field(&mut self, constant_pool: &ConstantPool) -> Result<Field, ClassParserError> {
         let access_flags = self.parse_u16()?;
-        let name_index = self.parse_u16()? as usize;
-        let descriptor_index = self.parse_u16()? as usize;
+        let name_index = self.parse_index(constant_pool.len())?;
+        let descriptor_index = self.parse_index(constant_pool.len())?;
         let attributes = self.parse_attributes(constant_pool)?;
 
         let field = Field {
@@ -153,8 +153,8 @@ impl ClassParser {
 
     fn parse_attribute(
         &mut self,
-        constant_pool: &[ConstantValue],
-        attribute_name_index: usize,
+        constant_pool: &ConstantPool,
+        attribute_name_index: NonZeroUsize,
     ) -> Result<Attribute, ClassParserError> {
         let attribute_length = self.parse_u32()? as usize;
         let attribute_name = Self::index_utf8(constant_pool, attribute_name_index)?;
@@ -162,11 +162,11 @@ impl ClassParser {
         let attribute = match attribute_name {
             CODE_ATTRIBUTE_NAME => self.parse_bytecode_attribute(constant_pool)?,
             CONSTATNT_VALUE_ATTRIBUTE_NAME => {
-                let value_index = self.parse_u16()? as usize;
+                let value_index = self.parse_index(constant_pool.len())?;
                 Attribute::ConstantValue { value_index }
             }
             SOURCE_FILE_ATTRIBUTE_NAME => {
-                let sourcefile_index = self.parse_u16()? as usize;
+                let sourcefile_index = self.parse_index(constant_pool.len())?;
                 Attribute::SourceFile { sourcefile_index }
             }
             _ => {
@@ -185,13 +185,13 @@ impl ClassParser {
 
     fn parse_bytecode_attribute(
         &mut self,
-        constant_pool: &[ConstantValue],
+        constant_pool: &ConstantPool,
     ) -> Result<Attribute, ClassParserError> {
-        let max_stack = self.parse_u16()?; // 2 bytes read
-        let max_locals = self.parse_u16()?; // 2 bytes read
-        let code_length = self.parse_u32()? as usize; // 4 bytes read
+        let max_stack = self.parse_u16()?;
+        let max_locals = self.parse_u16()?;
+        let code_length = self.parse_u32()? as usize;
         let code = self.parse_byte_array(code_length)?;
-        let exception_table_length = self.parse_u16()? as usize; // 2 bytes read
+        let exception_table_length = self.parse_u16()? as usize;
 
         let mut exception_table = Vec::with_capacity(exception_table_length);
         for _ in 0..exception_table_length {
@@ -232,13 +232,13 @@ impl ClassParser {
 
     fn parse_attributes(
         &mut self,
-        constant_pool: &[ConstantValue],
+        constant_pool: &ConstantPool,
     ) -> Result<Vec<Attribute>, ClassParserError> {
         let attributes_count = self.parse_u16()? as usize;
         let mut attributes = Vec::with_capacity(attributes_count);
         for _ in 0..attributes_count {
             const ATTRIBUTE_NAME_INDEX_SIZE: usize = 2;
-            let attribute_name_index = self.parse_u16()? as usize;
+            let attribute_name_index = self.parse_index(constant_pool.len())?;
             let attribute = self.parse_attribute(constant_pool, attribute_name_index)?;
             attributes.push(attribute);
         }
@@ -246,30 +246,26 @@ impl ClassParser {
         Ok(attributes)
     }
 
-    fn index_utf8(constant_pool: &[ConstantValue], index: usize) -> Result<&str, ClassParserError> {
-        let constant_value = Self::index_constant_pool(constant_pool, index)?;
-        match constant_value {
-            ConstantValue::Utf8(s) => Ok(s),
-            _ => Err(ClassParserError::ExpectedUtf8),
-        }
-    }
-
-    fn index_constant_pool(
-        constant_pool: &[ConstantValue],
-        index: usize,
-    ) -> Result<&ConstantValue, ClassParserError> {
-        if index == 0 || index >= constant_pool.len() {
-            Err(ClassParserError::InvalidConstantPoolIndex)
+    fn index_utf8(
+        constant_pool: &ConstantPool,
+        index: NonZeroUsize,
+    ) -> Result<&str, ClassParserError> {
+        let constant_value = constant_pool.get_utf8(index);
+        if let Some(s) = constant_value {
+            Ok(s)
         } else {
-            Ok(&constant_pool[index])
+            Err(ClassParserError::ExpectedUtf8)
         }
     }
 
-    fn parse_interfaces(&mut self) -> Result<Vec<usize>, ClassParserError> {
+    fn parse_interfaces(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<Vec<NonZeroUsize>, ClassParserError> {
         let interfaces_size = self.parse_u16()? as usize;
         let mut intefaces = Vec::with_capacity(interfaces_size);
         for _ in 0..interfaces_size {
-            let interface_index = self.parse_u16()? as usize;
+            let interface_index = self.parse_index(constant_pool_size)?;
             intefaces.push(interface_index);
         }
 
@@ -281,131 +277,157 @@ impl ClassParser {
         Ok(NonZeroUsize::new(index as usize))
     }
 
-    fn parse_constant_pool(&mut self) -> Result<Vec<ConstantValue>, ClassParserError> {
+    fn parse_constant_pool(&mut self) -> Result<ConstantPool, ClassParserError> {
         let constants_size = self.parse_u16()? as usize;
         if constants_size == 0 {
             return Err(ClassParserError::InvalidConstantsPoolSize);
         }
 
-        let mut constants_pool = Vec::with_capacity(constants_size);
-        constants_pool.push(ConstantValue::Unusable);
+        let mut constants_pool_values = Vec::with_capacity(constants_size);
+        constants_pool_values.push(ConstantValue::Unusable);
         let mut constants_index = 1;
         while constants_index < constants_size {
             let tag = self.parse_u8()?;
-            constants_pool.push(self.parse_constant_value(tag)?);
+            constants_pool_values.push(self.parse_constant_value(tag, constants_size)?);
             if tag == DOUBLE_TAG || tag == LONG_TAG {
-                constants_pool.push(ConstantValue::Unusable);
+                constants_pool_values.push(ConstantValue::Unusable);
                 constants_index += 2;
             } else {
                 constants_index += 1;
             }
         }
-        assert_eq!(constants_size, constants_pool.len());
+        assert_eq!(constants_size, constants_pool_values.len());
+        let constant_pool = ConstantPool::new(constants_pool_values);
 
-        Ok(constants_pool)
+        Ok(constant_pool)
     }
 
-    fn parse_constant_value(&mut self, tag: u8) -> Result<ConstantValue, ClassParserError> {
+    fn parse_constant_value(
+        &mut self,
+        tag: u8,
+        constant_pool_size: usize,
+    ) -> Result<ConstantValue, ClassParserError> {
         let constant_value = match tag {
             UTF8_TAG => self.parse_utf8_constant(),
             INTEGER_TAG => self.parse_integer(),
             FLOAT_TAG => self.parse_float(),
             LONG_TAG => self.parse_long(),
             DOUBLE_TAG => self.parse_double(),
-            CLASS_TAG => self.parse_class_const(),
-            STRING_TAG => self.parse_string(),
-            FIELDREF_TAG => self.parse_field_ref(),
-            METHODREF_TAG => self.parse_method_ref(),
-            INTERFACE_METHODREF_TAG => self.parse_interface_method_ref(),
-            NAME_AND_TYPE_TAG => self.parse_name_and_type(),
-            METHOD_HANDLE_TAG => self.parse_method_handle(),
-            METHOD_TYPE_TAG => self.parse_method_type(),
-            INVOKE_DYNAMIC_TAG => self.parse_invoke_dynamic(),
+            CLASS_TAG => self.parse_class_const(constant_pool_size),
+            STRING_TAG => self.parse_string(constant_pool_size),
+            FIELDREF_TAG => self.parse_field_ref(constant_pool_size),
+            METHODREF_TAG => self.parse_method_ref(constant_pool_size),
+            INTERFACE_METHODREF_TAG => self.parse_interface_method_ref(constant_pool_size),
+            NAME_AND_TYPE_TAG => self.parse_name_and_type(constant_pool_size),
+            METHOD_HANDLE_TAG => self.parse_method_handle(constant_pool_size),
+            METHOD_TYPE_TAG => self.parse_method_type(constant_pool_size),
+            INVOKE_DYNAMIC_TAG => self.parse_invoke_dynamic(constant_pool_size),
             _ => Err(ClassParserError::InvalidTag),
         }?;
 
         Ok(constant_value)
     }
 
-    fn parse_invoke_dynamic(&mut self) -> Result<ConstantValue, ClassParserError> {
-        let bootstrap_method_attr_index = self.parse_u16()?;
-        let name_and_type_index = self.parse_u16()?;
+    fn parse_invoke_dynamic(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<ConstantValue, ClassParserError> {
+        let bootstrap_method_attr_index = self.parse_index(constant_pool_size)?;
+        let name_and_type_index = self.parse_index(constant_pool_size)?;
         Ok(ConstantValue::InvokeDynamic {
-            bootstrap_method_attr_index: bootstrap_method_attr_index as usize,
-            name_and_type_index: name_and_type_index as usize,
+            bootstrap_method_attr_index,
+            name_and_type_index,
         })
     }
 
-    fn parse_method_type(&mut self) -> Result<ConstantValue, ClassParserError> {
-        let index = self.parse_u16()?;
-        Ok(ConstantValue::MethodType {
-            descriptor_index: index as usize,
-        })
+    fn parse_method_type(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<ConstantValue, ClassParserError> {
+        let descriptor_index = self.parse_index(constant_pool_size)?;
+        Ok(ConstantValue::MethodType { descriptor_index })
     }
 
-    fn parse_method_handle(&mut self) -> Result<ConstantValue, ClassParserError> {
+    fn parse_method_handle(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<ConstantValue, ClassParserError> {
         let reference_kind = self.parse_u8()?;
         if !(1..=9).contains(&reference_kind) {
             return Err(ClassParserError::InvalidReferenceKind);
         }
 
-        let reference_index = self.parse_u16()?;
+        let reference_index = self.parse_index(constant_pool_size)?;
         Ok(ConstantValue::MethodHandle {
             reference_kind,
-            reference_index: reference_index as usize,
+            reference_index,
         })
     }
 
-    fn parse_name_and_type(&mut self) -> Result<ConstantValue, ClassParserError> {
-        let name_index = self.parse_u16()?;
-        let descriptor_index = self.parse_u16()?;
+    fn parse_name_and_type(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<ConstantValue, ClassParserError> {
+        let name_index = self.parse_index(constant_pool_size)?;
+        let descriptor_index = self.parse_index(constant_pool_size)?;
         Ok(ConstantValue::NameAndType {
-            name_index: name_index as usize,
-            descriptor_index: descriptor_index as usize,
+            name_index,
+            descriptor_index,
         })
     }
 
-    fn parse_interface_method_ref(&mut self) -> Result<ConstantValue, ClassParserError> {
-        let class_index = self.parse_u16()?;
-        let name_and_type_index = self.parse_u16()?;
+    fn parse_interface_method_ref(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<ConstantValue, ClassParserError> {
+        let class_index = self.parse_index(constant_pool_size)?;
+        let name_and_type_index = self.parse_index(constant_pool_size)?;
 
         Ok(ConstantValue::InterfaceMethodRef {
-            class_index: class_index as usize,
-            name_and_type_index: name_and_type_index as usize,
+            class_index,
+            name_and_type_index,
         })
     }
 
-    fn parse_method_ref(&mut self) -> Result<ConstantValue, ClassParserError> {
-        let class_index = self.parse_u16()?;
-        let name_and_type_index = self.parse_u16()?;
+    fn parse_method_ref(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<ConstantValue, ClassParserError> {
+        let class_index = self.parse_index(constant_pool_size)?;
+        let name_and_type_index = self.parse_index(constant_pool_size)?;
 
         Ok(ConstantValue::MethodRef {
-            class_index: class_index as usize,
-            name_and_type_index: name_and_type_index as usize,
+            class_index,
+            name_and_type_index,
         })
     }
 
-    fn parse_field_ref(&mut self) -> Result<ConstantValue, ClassParserError> {
-        let class_index = self.parse_u16()?;
-        let name_and_type_index = self.parse_u16()?;
+    fn parse_field_ref(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<ConstantValue, ClassParserError> {
+        let class_index = self.parse_index(constant_pool_size)?;
+        let name_and_type_index = self.parse_index(constant_pool_size)?;
         Ok(ConstantValue::FieldRef {
-            class_index: class_index as usize,
-            name_and_type_index: name_and_type_index as usize,
+            class_index,
+            name_and_type_index,
         })
     }
 
-    fn parse_string(&mut self) -> Result<ConstantValue, ClassParserError> {
-        let index = self.parse_u16()?;
-        Ok(ConstantValue::String {
-            utf8_index: index as usize,
-        })
+    fn parse_string(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<ConstantValue, ClassParserError> {
+        let index = self.parse_index(constant_pool_size)?;
+        Ok(ConstantValue::String { utf8_index: index })
     }
 
-    fn parse_class_const(&mut self) -> Result<ConstantValue, ClassParserError> {
-        let index = self.parse_u16()?;
-        Ok(ConstantValue::Class {
-            name_index: index as usize,
-        })
+    fn parse_class_const(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<ConstantValue, ClassParserError> {
+        let index = self.parse_index(constant_pool_size)?;
+        Ok(ConstantValue::Class { name_index: index })
     }
 
     fn parse_integer(&mut self) -> Result<ConstantValue, ClassParserError> {
@@ -454,6 +476,18 @@ impl ClassParser {
             Ok(())
         } else {
             Err(ClassParserError::InvalidMagicNumber)
+        }
+    }
+
+    fn parse_index(&mut self, constant_pool_size: usize) -> Result<NonZeroUsize, ClassParserError> {
+        let read_index = self.parse_u16()? as usize;
+        let index_option = NonZeroUsize::new(read_index);
+        if let Some(index) = index_option
+            && index.get() < constant_pool_size
+        {
+            Ok(index)
+        } else {
+            Err(ClassParserError::InvalidConstantPoolIndex)
         }
     }
 
