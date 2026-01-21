@@ -1,7 +1,7 @@
 use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
 use crate::class_file::{
-    Attribute, Bytecode, ClassFile, ConstantPool, ConstantValue, ExceptionTableEntry, Field,
+    Attribute, Bytecode, ClassFile, ConstantPool, ConstantValue, ExceptionTableEntry, Field, Method,
 };
 
 const CLASS_FILE_MAGIC: u32 = 0xCAFEBABE;
@@ -21,7 +21,7 @@ const METHOD_TYPE_TAG: u8 = 16;
 const INVOKE_DYNAMIC_TAG: u8 = 18;
 
 const CODE_ATTRIBUTE_NAME: &str = "Code";
-const CONSTATNT_VALUE_ATTRIBUTE_NAME: &str = "ConstantValue";
+const CONSTANT_VALUE_ATTRIBUTE_NAME: &str = "ConstantValue";
 const SOURCE_FILE_ATTRIBUTE_NAME: &str = "SourceFile";
 
 pub fn parse(class_file_path: &str) -> Result<ClassFile, ClassParserError> {
@@ -73,7 +73,7 @@ impl Display for ClassParserError {
             Self::InvalidConstantPoolIndex => "Invalid constant pool index",
         };
 
-        f.write_str(&description)
+        f.write_str(description)
     }
 }
 impl Error for ClassParserError {
@@ -101,10 +101,10 @@ impl ClassParser {
         let constant_pool = self.parse_constant_pool()?;
         let access_flags = self.parse_u16()?;
         let this_class = self.parse_index(constant_pool.len())?;
-        let super_class = self.parse_super_class()?;
+        let super_class = self.parse_super_class(constant_pool.len())?;
         let interfaces = self.parse_interfaces(constant_pool.len())?;
         let fields = self.parse_fields(&constant_pool)?;
-        let methods = todo!();
+        let methods = self.parse_methods(&constant_pool)?;
         let attributes = self.parse_attributes(&constant_pool)?;
 
         let class_file = ClassFile {
@@ -119,6 +119,35 @@ impl ClassParser {
         };
 
         Ok(class_file)
+    }
+
+    fn parse_methods(
+        &mut self,
+        constant_pool: &ConstantPool,
+    ) -> Result<Vec<Method>, ClassParserError> {
+        let methods_count = self.parse_u16()? as usize;
+        let mut methods = Vec::with_capacity(methods_count);
+        for _ in 0..methods_count {
+            let method = self.parse_method(constant_pool)?;
+            methods.push(method);
+        }
+
+        Ok(methods)
+    }
+
+    fn parse_method(&mut self, constant_pool: &ConstantPool) -> Result<Method, ClassParserError> {
+        let access_flags = self.parse_u16()?;
+        let name_index = self.parse_index(constant_pool.len())?;
+        let descriptor_index = self.parse_index(constant_pool.len())?;
+        let attributes = self.parse_attributes(constant_pool)?;
+
+        let method = Method {
+            name_index,
+            descriptor_index,
+            access_flags,
+            attributes,
+        };
+        Ok(method)
     }
 
     fn parse_fields(
@@ -161,7 +190,7 @@ impl ClassParser {
         let start_index = self.index;
         let attribute = match attribute_name {
             CODE_ATTRIBUTE_NAME => self.parse_bytecode_attribute(constant_pool)?,
-            CONSTATNT_VALUE_ATTRIBUTE_NAME => {
+            CONSTANT_VALUE_ATTRIBUTE_NAME => {
                 let value_index = self.parse_index(constant_pool.len())?;
                 Attribute::ConstantValue { value_index }
             }
@@ -237,7 +266,6 @@ impl ClassParser {
         let attributes_count = self.parse_u16()? as usize;
         let mut attributes = Vec::with_capacity(attributes_count);
         for _ in 0..attributes_count {
-            const ATTRIBUTE_NAME_INDEX_SIZE: usize = 2;
             let attribute_name_index = self.parse_index(constant_pool.len())?;
             let attribute = self.parse_attribute(constant_pool, attribute_name_index)?;
             attributes.push(attribute);
@@ -272,9 +300,16 @@ impl ClassParser {
         Ok(intefaces)
     }
 
-    fn parse_super_class(&mut self) -> Result<Option<NonZeroUsize>, ClassParserError> {
-        let index = self.parse_u16()?;
-        Ok(NonZeroUsize::new(index as usize))
+    fn parse_super_class(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<Option<NonZeroUsize>, ClassParserError> {
+        let index = self.parse_u16()? as usize;
+        if index >= constant_pool_size {
+            return Err(ClassParserError::InvalidConstantPoolIndex);
+        }
+
+        Ok(NonZeroUsize::new(index))
     }
 
     fn parse_constant_pool(&mut self) -> Result<ConstantPool, ClassParserError> {
@@ -561,5 +596,31 @@ impl ClassParser {
 
     fn check_left(&self, bytes_to_check: usize) -> bool {
         self.index + bytes_to_check <= self.bytes.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_class() {
+        let result = parse("test_classes/Test.class").unwrap();
+        assert_eq!("Test", result.get_class_name().unwrap());
+        assert_eq!("java/lang/Object", result.get_super_class_name().unwrap());
+    }
+
+    #[test]
+    fn test_load_invalid_class() {
+        let result = parse_from_bytes(vec![0xCA, 0xFE, 0xBA, 0xBE, 0x0]);
+        let error = result.unwrap_err();
+        assert!(matches!(error, ClassParserError::UnexpectedEndOfFile));
+    }
+
+    #[test]
+    fn test_parse_invalid_magic_number() {
+        let result = parse_from_bytes(vec![0xCA, 0xFE, 0x01, 0xBE, 0x0]);
+        let error = result.unwrap_err();
+        assert!(matches!(error, ClassParserError::InvalidMagicNumber));
     }
 }

@@ -86,10 +86,10 @@ pub struct Field {
 
 #[derive(Debug, Clone)]
 pub struct Method {
-    pub name: String,
-    pub descriptor: String,
-    pub access_flags: u32,
-    pub bytecode: Option<Bytecode>,
+    pub name_index: NonZeroUsize,
+    pub descriptor_index: NonZeroUsize,
+    pub access_flags: u16,
+    pub attributes: Vec<Attribute>,
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +98,7 @@ pub struct ConstantPool {
 }
 impl ConstantPool {
     pub fn new(constant_pool_table: Vec<ConstantValue>) -> Self {
+        assert!(!constant_pool_table.is_empty());
         Self {
             constant_pool_table,
         }
@@ -108,6 +109,7 @@ impl ConstantPool {
     }
 
     pub fn get(&self, index: NonZeroUsize) -> &ConstantValue {
+        debug_assert!(index.get() < self.constant_pool_table.len());
         &self.constant_pool_table[index.get()]
     }
 
@@ -116,6 +118,17 @@ impl ConstantPool {
             ConstantValue::Utf8(s) => Some(s),
             _ => None,
         }
+    }
+
+    pub fn get_class_name(&self, class_index: NonZeroUsize) -> Option<&str> {
+        let class = self.get(class_index);
+        let name_index = match class {
+            ConstantValue::Class { name_index } => name_index,
+            _ => return None,
+        };
+        let class_name = self.get_utf8(*name_index)?;
+
+        Some(class_name)
     }
 }
 
@@ -129,4 +142,13 @@ pub struct ClassFile {
     pub fields: Vec<Field>,
     pub access_flags: u16,
     pub attributes: Vec<Attribute>,
+}
+impl ClassFile {
+    pub fn get_class_name(&self) -> Option<&str> {
+        self.constant_pool.get_class_name(self.class_index)
+    }
+
+    pub fn get_super_class_name(&self) -> Option<&str> {
+        self.constant_pool.get_class_name(self.super_class_index?)
+    }
 }
