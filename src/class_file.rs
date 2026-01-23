@@ -62,6 +62,14 @@ pub struct Bytecode {
 }
 
 #[derive(Debug, Clone)]
+pub struct InnerClass {
+    pub inner_class_info_index: NonZeroUsize,
+    pub outer_class_info_index: NonZeroUsize,
+    pub inner_name_index: Option<NonZeroUsize>,
+    pub inner_class_access_flags: ClassAccessFlags,
+}
+
+#[derive(Debug, Clone)]
 pub enum Attribute {
     Code(Bytecode),
     ConstantValue {
@@ -70,6 +78,7 @@ pub enum Attribute {
     SourceFile {
         sourcefile_index: NonZeroUsize,
     },
+    InnerClasses(Vec<InnerClass>),
     Unknown {
         name_index: NonZeroUsize,
         info: Vec<u8>,
@@ -99,21 +108,7 @@ impl FieldAccessFlags {
     pub const SYNTHETIC_FLAG: u16 = 0x1000;
     pub const ENUM_FLAG: u16 = 0x4000;
 
-    const VALID_FLAGS: u16 = Self::PUBLIC_FLAG
-        | Self::PRIVATE_FLAG
-        | Self::PROTECTED_FLAG
-        | Self::STATIC_FLAG
-        | Self::FINAL_FLAG
-        | Self::VOLATILE_FLAG
-        | Self::TRANSIENT_FLAG
-        | Self::SYNTHETIC_FLAG
-        | Self::ENUM_FLAG;
-
     pub fn new(access_flags: u16) -> Option<Self> {
-        if access_flags & !Self::VALID_FLAGS != 0 {
-            return None;
-        }
-
         let flags = Self { access_flags };
         let mut access_count = 0;
         if flags.check_flag(Self::PUBLIC_FLAG) {
@@ -126,6 +121,12 @@ impl FieldAccessFlags {
             access_count += 1;
         }
         if access_count > 1 {
+            return None;
+        }
+
+        let is_invalid_combination =
+            flags.check_flag(Self::VOLATILE_FLAG) && flags.check_flag(Self::FINAL_FLAG);
+        if is_invalid_combination {
             return None;
         }
 
@@ -155,24 +156,7 @@ impl MethodAccessFlags {
     pub const STRICT_FLAG: u16 = 0x0800;
     pub const SYNTHETIC_FLAG: u16 = 0x1000;
 
-    const VALID_FLAGS: u16 = Self::PUBLIC_FLAG
-        | Self::PRIVATE_FLAG
-        | Self::PROTECTED_FLAG
-        | Self::STATIC_FLAG
-        | Self::FINAL_FLAG
-        | Self::SYNCHRONIZED_FLAG
-        | Self::BRIDGE_FLAG
-        | Self::VARARGS_FLAG
-        | Self::NATIVE_FLAG
-        | Self::ABSTRACT_FLAG
-        | Self::STRICT_FLAG
-        | Self::SYNTHETIC_FLAG;
-
     pub fn new(access_flags: u16) -> Option<Self> {
-        if access_flags & !Self::VALID_FLAGS != 0 {
-            return None;
-        }
-
         let flags = Self { access_flags };
         let mut access_count = 0;
         if flags.check_flag(Self::PUBLIC_FLAG) {
@@ -185,6 +169,17 @@ impl MethodAccessFlags {
             access_count += 1;
         }
         if access_count > 1 {
+            return None;
+        }
+
+        let is_invalid_combination = flags.check_flag(Self::ABSTRACT_FLAG)
+            && (flags.check_flag(Self::FINAL_FLAG)
+                || flags.check_flag(Self::NATIVE_FLAG)
+                || flags.check_flag(Self::STATIC_FLAG)
+                || flags.check_flag(Self::SYNCHRONIZED_FLAG)
+                || flags.check_flag(Self::STRICT_FLAG)
+                || flags.check_flag(Self::PRIVATE_FLAG));
+        if is_invalid_combination {
             return None;
         }
 
@@ -258,21 +253,19 @@ impl ClassAccessFlags {
     pub const ANNOTATION_FLAG: u16 = 0x2000;
     pub const ENUM_FLAG: u16 = 0x4000;
 
-    const VALID_FLAGS: u16 = Self::PUBLIC_FLAG
-        | Self::FINAL_FLAG
-        | Self::SUPER_FLAG
-        | Self::INTERFACE_FLAG
-        | Self::ABSTRACT_FLAG
-        | Self::SYNTHETIC_FLAG
-        | Self::ANNOTATION_FLAG
-        | Self::ENUM_FLAG;
-
     pub fn new(access_flags: u16) -> Option<Self> {
-        if access_flags & !Self::VALID_FLAGS != 0 {
+        let flags = Self { access_flags };
+        if flags.check_flag(Self::INTERFACE_FLAG) && !flags.check_flag(Self::ABSTRACT_FLAG) {
+            return None;
+        }
+        if flags.check_flag(Self::ANNOTATION_FLAG) && !flags.check_flag(Self::INTERFACE_FLAG) {
+            return None;
+        }
+        if flags.check_flag(Self::ENUM_FLAG) && flags.check_flag(Self::FINAL_FLAG) {
             return None;
         }
 
-        Some(Self { access_flags })
+        Some(flags)
     }
 
     pub fn check_flag(self, flag: u16) -> bool {

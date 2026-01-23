@@ -2,7 +2,7 @@ use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
 use crate::class_file::{
     Attribute, Bytecode, ClassAccessFlags, ClassFile, ConstantPool, ConstantValue,
-    ExceptionTableEntry, Field, FieldAccessFlags, Method, MethodAccessFlags,
+    ExceptionTableEntry, Field, FieldAccessFlags, InnerClass, Method, MethodAccessFlags,
 };
 
 const CLASS_FILE_MAGIC: u32 = 0xCAFEBABE;
@@ -24,6 +24,7 @@ const INVOKE_DYNAMIC_TAG: u8 = 18;
 const CODE_ATTRIBUTE_NAME: &str = "Code";
 const CONSTANT_VALUE_ATTRIBUTE_NAME: &str = "ConstantValue";
 const SOURCE_FILE_ATTRIBUTE_NAME: &str = "SourceFile";
+const INNER_CLASSES_ATTRIBUTE_NAME: &str = "InnerClasses";
 
 pub fn parse(class_file_path: &str) -> Result<ClassFile, ClassParserError> {
     let bytes_result = std::fs::read(class_file_path);
@@ -241,6 +242,9 @@ impl ClassParser {
                 let sourcefile_index = self.parse_index(constant_pool.len())?;
                 Attribute::SourceFile { sourcefile_index }
             }
+            INNER_CLASSES_ATTRIBUTE_NAME => {
+                self.parse_inner_classes_attribute(constant_pool.len())?
+            }
             _ => {
                 let info = self.parse_byte_array(attribute_length)?;
                 Attribute::Unknown {
@@ -253,6 +257,30 @@ impl ClassParser {
         Self::expect_attribute_length(attribute_length, read_bytes)?;
 
         Ok(attribute)
+    }
+
+    fn parse_inner_classes_attribute(
+        &mut self,
+        constant_pool_size: usize,
+    ) -> Result<Attribute, ClassParserError> {
+        let number_of_classes = self.parse_u16()? as usize;
+
+        let mut inner_classes = Vec::with_capacity(number_of_classes);
+        for _ in 0..number_of_classes {
+            let inner_class_info_index = self.parse_index(constant_pool_size)?;
+            let outer_class_info_index = self.parse_index(constant_pool_size)?;
+            let inner_name_index = NonZeroUsize::new(self.parse_u16()? as usize);
+            let inner_class_access_flags = self.parse_class_access_flags()?;
+
+            inner_classes.push(InnerClass {
+                inner_class_info_index,
+                outer_class_info_index,
+                inner_name_index,
+                inner_class_access_flags,
+            });
+        }
+
+        Ok(Attribute::InnerClasses(inner_classes))
     }
 
     fn parse_bytecode_attribute(
