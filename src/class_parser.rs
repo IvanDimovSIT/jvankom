@@ -1,7 +1,8 @@
 use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
 use crate::class_file::{
-    Attribute, Bytecode, ClassFile, ConstantPool, ConstantValue, ExceptionTableEntry, Field, Method,
+    Attribute, Bytecode, ClassAccessFlags, ClassFile, ConstantPool, ConstantValue,
+    ExceptionTableEntry, Field, FieldAccessFlags, Method, MethodAccessFlags,
 };
 
 const CLASS_FILE_MAGIC: u32 = 0xCAFEBABE;
@@ -48,6 +49,7 @@ pub enum ClassParserError {
     EmptyFile,
     ErrorReadingFile(String),
     UnexpectedEndOfFile,
+    ExpectedEndOfFile,
     InvalidMagicNumber,
     InvalidConstantsPoolSize,
     InvalidTag,
@@ -56,6 +58,9 @@ pub enum ClassParserError {
     ExpectedUtf8,
     InvalidAttributeLength,
     InvalidConstantPoolIndex,
+    InvalidFieldAccessFlags,
+    InvalidMethodAccessFlags,
+    InvalidClassAccessFlags,
 }
 impl Display for ClassParserError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -63,14 +68,18 @@ impl Display for ClassParserError {
             Self::EmptyFile => "File is empty",
             Self::ErrorReadingFile(desc) => desc,
             Self::UnexpectedEndOfFile => "Unexpected end of file",
+            Self::ExpectedEndOfFile => "Expecting end of file - extra bytes present",
             Self::InvalidMagicNumber => "Invalid magic number",
             Self::InvalidConstantsPoolSize => "Invalid constants pool size",
-            Self::InvalidTag => "Invalid tag",
+            Self::InvalidTag => "Invalid constant pool tag",
             Self::InvalidUtf8String(desc) => desc,
             Self::InvalidReferenceKind => "Invalid reference kind",
             Self::ExpectedUtf8 => "Expected UTF8 constant value",
             Self::InvalidAttributeLength => "Invalid attribute length",
             Self::InvalidConstantPoolIndex => "Invalid constant pool index",
+            Self::InvalidFieldAccessFlags => "Invalid field access flags",
+            Self::InvalidMethodAccessFlags => "Invalid method access flags",
+            Self::InvalidClassAccessFlags => "Invalid class access flags",
         };
 
         f.write_str(description)
@@ -99,13 +108,17 @@ impl ClassParser {
         self.validate_magic()?;
         let (_major, _minor) = self.parse_versions()?;
         let constant_pool = self.parse_constant_pool()?;
-        let access_flags = self.parse_u16()?;
+        let access_flags = self.parse_class_access_flags()?;
         let this_class = self.parse_index(constant_pool.len())?;
         let super_class = self.parse_super_class(constant_pool.len())?;
         let interfaces = self.parse_interfaces(constant_pool.len())?;
         let fields = self.parse_fields(&constant_pool)?;
         let methods = self.parse_methods(&constant_pool)?;
         let attributes = self.parse_attributes(&constant_pool)?;
+
+        if self.index != self.bytes.len() {
+            return Err(ClassParserError::ExpectedEndOfFile);
+        }
 
         let class_file = ClassFile {
             class_index: this_class,
@@ -119,6 +132,16 @@ impl ClassParser {
         };
 
         Ok(class_file)
+    }
+
+    fn parse_class_access_flags(&mut self) -> Result<ClassAccessFlags, ClassParserError> {
+        let raw_flags = self.parse_u16()?;
+
+        if let Some(access_flags) = ClassAccessFlags::new(raw_flags) {
+            Ok(access_flags)
+        } else {
+            Err(ClassParserError::InvalidClassAccessFlags)
+        }
     }
 
     fn parse_methods(
@@ -136,7 +159,7 @@ impl ClassParser {
     }
 
     fn parse_method(&mut self, constant_pool: &ConstantPool) -> Result<Method, ClassParserError> {
-        let access_flags = self.parse_u16()?;
+        let access_flags = self.parse_method_access_flags()?;
         let name_index = self.parse_index(constant_pool.len())?;
         let descriptor_index = self.parse_index(constant_pool.len())?;
         let attributes = self.parse_attributes(constant_pool)?;
@@ -148,6 +171,16 @@ impl ClassParser {
             attributes,
         };
         Ok(method)
+    }
+
+    fn parse_method_access_flags(&mut self) -> Result<MethodAccessFlags, ClassParserError> {
+        let raw_flags = self.parse_u16()?;
+
+        if let Some(access_flags) = MethodAccessFlags::new(raw_flags) {
+            Ok(access_flags)
+        } else {
+            Err(ClassParserError::InvalidMethodAccessFlags)
+        }
     }
 
     fn parse_fields(
@@ -165,7 +198,7 @@ impl ClassParser {
     }
 
     fn parse_field(&mut self, constant_pool: &ConstantPool) -> Result<Field, ClassParserError> {
-        let access_flags = self.parse_u16()?;
+        let access_flags = self.parse_field_access_flags()?;
         let name_index = self.parse_index(constant_pool.len())?;
         let descriptor_index = self.parse_index(constant_pool.len())?;
         let attributes = self.parse_attributes(constant_pool)?;
@@ -178,6 +211,16 @@ impl ClassParser {
         };
 
         Ok(field)
+    }
+
+    fn parse_field_access_flags(&mut self) -> Result<FieldAccessFlags, ClassParserError> {
+        let raw_flags = self.parse_u16()?;
+
+        if let Some(access_flags) = FieldAccessFlags::new(raw_flags) {
+            Ok(access_flags)
+        } else {
+            Err(ClassParserError::InvalidFieldAccessFlags)
+        }
     }
 
     fn parse_attribute(
@@ -603,15 +646,124 @@ impl ClassParser {
 mod tests {
     use super::*;
 
+    const TEST_CLASS_FILE_PATH: &str = "test_classes/Test.class";
+
     #[test]
-    fn test_load_class() {
-        let result = parse("test_classes/Test.class").unwrap();
-        assert_eq!("Test", result.get_class_name().unwrap());
-        assert_eq!("java/lang/Object", result.get_super_class_name().unwrap());
+    fn test_parse_ok() {
+        let class = parse(TEST_CLASS_FILE_PATH).unwrap();
+        assert_eq!("Test", class.get_class_name().unwrap());
+        assert_eq!("java/lang/Object", class.get_super_class_name().unwrap());
+        assert_eq!(1, class.fields.len());
+        assert!(class.interfaces.is_empty());
+
+        let field = &class.fields[0];
+        let field_name = class.constant_pool.get_utf8(field.name_index).unwrap();
+        assert_eq!("a", field_name);
+
+        let field_type = class
+            .constant_pool
+            .get_utf8(field.descriptor_index)
+            .unwrap();
+        assert_eq!("I", field_type);
+
+        assert!(
+            field
+                .access_flags
+                .check_flag(FieldAccessFlags::PRIVATE_FLAG)
+        );
+        let unexpected_field_flags = [
+            FieldAccessFlags::PUBLIC_FLAG,
+            FieldAccessFlags::PROTECTED_FLAG,
+            FieldAccessFlags::FINAL_FLAG,
+            FieldAccessFlags::STATIC_FLAG,
+            FieldAccessFlags::SYNTHETIC_FLAG,
+            FieldAccessFlags::TRANSIENT_FLAG,
+            FieldAccessFlags::VOLATILE_FLAG,
+            FieldAccessFlags::ENUM_FLAG,
+        ];
+        for flag in unexpected_field_flags {
+            assert!(!field.access_flags.check_flag(flag))
+        }
+        assert!(field.attributes.is_empty());
+
+        let method1 = &class.methods[0];
+        let method2 = &class.methods[1];
+        assert_method_values(method1, &class.constant_pool, "<init>", "()V");
+        assert_method_values(method2, &class.constant_pool, "hello", "()V");
+
+        assert!(class.access_flags.check_flag(ClassAccessFlags::PUBLIC_FLAG));
+        assert!(class.access_flags.check_flag(ClassAccessFlags::SUPER_FLAG));
+        let unexpected_class_flags = [
+            ClassAccessFlags::ABSTRACT_FLAG,
+            ClassAccessFlags::ANNOTATION_FLAG,
+            ClassAccessFlags::SYNTHETIC_FLAG,
+            ClassAccessFlags::INTERFACE_FLAG,
+            ClassAccessFlags::FINAL_FLAG,
+            ClassAccessFlags::ENUM_FLAG,
+        ];
+        for flag in unexpected_class_flags {
+            assert!(!class.access_flags.check_flag(flag));
+        }
+
+        assert_eq!(1, class.attributes.len());
+        let sourcefile = match &class.attributes[0] {
+            Attribute::SourceFile { sourcefile_index } => {
+                class.constant_pool.get_utf8(*sourcefile_index).unwrap()
+            }
+            _ => panic!("expected source file attribute"),
+        };
+        assert_eq!("Test.java", sourcefile)
+    }
+
+    fn assert_method_values(
+        method: &Method,
+        const_pool: &ConstantPool,
+        expected_name: &str,
+        expected_descriptor: &str,
+    ) {
+        let name = const_pool.get_utf8(method.name_index).unwrap();
+        assert_eq!(expected_name, name);
+
+        let descriptor = const_pool.get_utf8(method.descriptor_index).unwrap();
+        assert_eq!(expected_descriptor, descriptor);
+
+        let code: Vec<_> = method
+            .attributes
+            .iter()
+            .filter_map(|atr| match atr {
+                Attribute::Code(c) => Some(c),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(1, code.len());
+        assert!(!code[0].code.is_empty());
+        assert!(code[0].max_stack > 0);
+        assert!(code[0].max_locals > 0);
+
+        assert!(
+            method
+                .access_flags
+                .check_flag(MethodAccessFlags::PUBLIC_FLAG)
+        );
+        let unexpected_field_flags = [
+            MethodAccessFlags::PRIVATE_FLAG,
+            MethodAccessFlags::PROTECTED_FLAG,
+            MethodAccessFlags::FINAL_FLAG,
+            MethodAccessFlags::STATIC_FLAG,
+            MethodAccessFlags::SYNTHETIC_FLAG,
+            MethodAccessFlags::STRICT_FLAG,
+            MethodAccessFlags::SYNCHRONIZED_FLAG,
+            MethodAccessFlags::NATIVE_FLAG,
+            MethodAccessFlags::VARARGS_FLAG,
+        ];
+        for flag in unexpected_field_flags {
+            assert!(!method.access_flags.check_flag(flag));
+        }
     }
 
     #[test]
-    fn test_load_invalid_class() {
+    fn test_parse_unexpected_end_of_file() {
         let result = parse_from_bytes(vec![0xCA, 0xFE, 0xBA, 0xBE, 0x0]);
         let error = result.unwrap_err();
         assert!(matches!(error, ClassParserError::UnexpectedEndOfFile));
@@ -622,5 +774,21 @@ mod tests {
         let result = parse_from_bytes(vec![0xCA, 0xFE, 0x01, 0xBE, 0x0]);
         let error = result.unwrap_err();
         assert!(matches!(error, ClassParserError::InvalidMagicNumber));
+    }
+
+    #[test]
+    fn test_parse_empty_file() {
+        let result = parse_from_bytes(vec![]);
+        let error = result.unwrap_err();
+        assert!(matches!(error, ClassParserError::EmptyFile));
+    }
+
+    #[test]
+    fn test_parse_trailing_bytes() {
+        let mut bytes = std::fs::read(TEST_CLASS_FILE_PATH).unwrap();
+        bytes.push(0);
+        let result = parse_from_bytes(bytes);
+        let error = result.unwrap_err();
+        assert!(matches!(error, ClassParserError::ExpectedEndOfFile));
     }
 }

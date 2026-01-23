@@ -80,15 +80,127 @@ pub enum Attribute {
 pub struct Field {
     pub name_index: NonZeroUsize,
     pub descriptor_index: NonZeroUsize,
-    pub access_flags: u16,
+    pub access_flags: FieldAccessFlags,
     pub attributes: Vec<Attribute>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FieldAccessFlags {
+    access_flags: u16,
+}
+impl FieldAccessFlags {
+    pub const PUBLIC_FLAG: u16 = 0x0001;
+    pub const PRIVATE_FLAG: u16 = 0x0002;
+    pub const PROTECTED_FLAG: u16 = 0x0004;
+    pub const STATIC_FLAG: u16 = 0x0008;
+    pub const FINAL_FLAG: u16 = 0x0010;
+    pub const VOLATILE_FLAG: u16 = 0x0040;
+    pub const TRANSIENT_FLAG: u16 = 0x0080;
+    pub const SYNTHETIC_FLAG: u16 = 0x1000;
+    pub const ENUM_FLAG: u16 = 0x4000;
+
+    const VALID_FLAGS: u16 = Self::PUBLIC_FLAG
+        | Self::PRIVATE_FLAG
+        | Self::PROTECTED_FLAG
+        | Self::STATIC_FLAG
+        | Self::FINAL_FLAG
+        | Self::VOLATILE_FLAG
+        | Self::TRANSIENT_FLAG
+        | Self::SYNTHETIC_FLAG
+        | Self::ENUM_FLAG;
+
+    pub fn new(access_flags: u16) -> Option<Self> {
+        if access_flags & !Self::VALID_FLAGS != 0 {
+            return None;
+        }
+
+        let flags = Self { access_flags };
+        let mut access_count = 0;
+        if flags.check_flag(Self::PUBLIC_FLAG) {
+            access_count += 1;
+        }
+        if flags.check_flag(Self::PROTECTED_FLAG) {
+            access_count += 1;
+        }
+        if flags.check_flag(Self::PRIVATE_FLAG) {
+            access_count += 1;
+        }
+        if access_count > 1 {
+            return None;
+        }
+
+        Some(flags)
+    }
+
+    pub fn check_flag(self, flag: u16) -> bool {
+        self.access_flags & flag != 0
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MethodAccessFlags {
+    access_flags: u16,
+}
+impl MethodAccessFlags {
+    pub const PUBLIC_FLAG: u16 = 0x0001;
+    pub const PRIVATE_FLAG: u16 = 0x0002;
+    pub const PROTECTED_FLAG: u16 = 0x0004;
+    pub const STATIC_FLAG: u16 = 0x0008;
+    pub const FINAL_FLAG: u16 = 0x0010;
+    pub const SYNCHRONIZED_FLAG: u16 = 0x0020;
+    pub const BRIDGE_FLAG: u16 = 0x0040;
+    pub const VARARGS_FLAG: u16 = 0x0080;
+    pub const NATIVE_FLAG: u16 = 0x0100;
+    pub const ABSTRACT_FLAG: u16 = 0x0400;
+    pub const STRICT_FLAG: u16 = 0x0800;
+    pub const SYNTHETIC_FLAG: u16 = 0x1000;
+
+    const VALID_FLAGS: u16 = Self::PUBLIC_FLAG
+        | Self::PRIVATE_FLAG
+        | Self::PROTECTED_FLAG
+        | Self::STATIC_FLAG
+        | Self::FINAL_FLAG
+        | Self::SYNCHRONIZED_FLAG
+        | Self::BRIDGE_FLAG
+        | Self::VARARGS_FLAG
+        | Self::NATIVE_FLAG
+        | Self::ABSTRACT_FLAG
+        | Self::STRICT_FLAG
+        | Self::SYNTHETIC_FLAG;
+
+    pub fn new(access_flags: u16) -> Option<Self> {
+        if access_flags & !Self::VALID_FLAGS != 0 {
+            return None;
+        }
+
+        let flags = Self { access_flags };
+        let mut access_count = 0;
+        if flags.check_flag(Self::PUBLIC_FLAG) {
+            access_count += 1;
+        }
+        if flags.check_flag(Self::PROTECTED_FLAG) {
+            access_count += 1;
+        }
+        if flags.check_flag(Self::PRIVATE_FLAG) {
+            access_count += 1;
+        }
+        if access_count > 1 {
+            return None;
+        }
+
+        Some(flags)
+    }
+
+    pub fn check_flag(self, flag: u16) -> bool {
+        self.access_flags & flag != 0
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Method {
     pub name_index: NonZeroUsize,
     pub descriptor_index: NonZeroUsize,
-    pub access_flags: u16,
+    pub access_flags: MethodAccessFlags,
     pub attributes: Vec<Attribute>,
 }
 
@@ -132,6 +244,42 @@ impl ConstantPool {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ClassAccessFlags {
+    access_flags: u16,
+}
+impl ClassAccessFlags {
+    pub const PUBLIC_FLAG: u16 = 0x0001;
+    pub const FINAL_FLAG: u16 = 0x0010;
+    pub const SUPER_FLAG: u16 = 0x0020;
+    pub const INTERFACE_FLAG: u16 = 0x0200;
+    pub const ABSTRACT_FLAG: u16 = 0x0400;
+    pub const SYNTHETIC_FLAG: u16 = 0x1000;
+    pub const ANNOTATION_FLAG: u16 = 0x2000;
+    pub const ENUM_FLAG: u16 = 0x4000;
+
+    const VALID_FLAGS: u16 = Self::PUBLIC_FLAG
+        | Self::FINAL_FLAG
+        | Self::SUPER_FLAG
+        | Self::INTERFACE_FLAG
+        | Self::ABSTRACT_FLAG
+        | Self::SYNTHETIC_FLAG
+        | Self::ANNOTATION_FLAG
+        | Self::ENUM_FLAG;
+
+    pub fn new(access_flags: u16) -> Option<Self> {
+        if access_flags & !Self::VALID_FLAGS != 0 {
+            return None;
+        }
+
+        Some(Self { access_flags })
+    }
+
+    pub fn check_flag(self, flag: u16) -> bool {
+        self.access_flags & flag != 0
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ClassFile {
     pub class_index: NonZeroUsize,
@@ -140,7 +288,7 @@ pub struct ClassFile {
     pub constant_pool: ConstantPool,
     pub methods: Vec<Method>,
     pub fields: Vec<Field>,
-    pub access_flags: u16,
+    pub access_flags: ClassAccessFlags,
     pub attributes: Vec<Attribute>,
 }
 impl ClassFile {
