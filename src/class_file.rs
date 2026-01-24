@@ -198,6 +198,14 @@ pub struct Method {
     pub access_flags: MethodAccessFlags,
     pub attributes: Vec<Attribute>,
 }
+impl Method {
+    pub fn get_bytecode(&self, index: usize) -> &Bytecode {
+        match &self.attributes[index] {
+            Attribute::Code(bytecode) => bytecode,
+            _ => panic!("Expected code attribute"),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ConstantPool {
@@ -291,5 +299,25 @@ impl ClassFile {
 
     pub fn get_super_class_name(&self) -> Option<&str> {
         self.constant_pool.get_class_name(self.super_class_index?)
+    }
+
+    pub fn get_method_and_bytecode_index(&self, method_name: &str) -> Option<(usize, usize)> {
+        for (index, method) in self.methods.iter().enumerate() {
+            if self.constant_pool.get_utf8(method.name_index)? == method_name {
+                let (bytecode_index, _) =
+                    method
+                        .attributes
+                        .iter()
+                        .enumerate()
+                        .find(|(_, atr)| match atr {
+                            Attribute::Code(_) => true,
+                            _ => false,
+                        })?;
+
+                return Some((index, bytecode_index));
+            }
+        }
+
+        None
     }
 }

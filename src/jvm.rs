@@ -1,0 +1,131 @@
+use crate::{
+    bytecode::BYTECODE_TABLE,
+    class_loader::{ClassLoader, LoadedClass},
+    jvm_model::{JvmError, JvmHeap, JvmStackFrame, JvmThread, JvmValue},
+};
+
+pub struct JVM {
+    class_loader: ClassLoader,
+    threads: Vec<JvmThread>,
+    heap: JvmHeap,
+}
+impl JVM {
+    pub fn new(contexts: Vec<String>) -> Self {
+        Self {
+            class_loader: ClassLoader::new(contexts),
+            threads: vec![],
+            heap: JvmHeap::new(),
+        }
+    }
+
+    pub fn run(
+        &mut self,
+        class_name: String,
+        method_name: String,
+        params: Vec<JvmValue>,
+    ) -> Result<Option<JvmValue>, Box<JvmError>> {
+        let loaded_class = self.class_loader.get(&class_name)?;
+
+        let (method_index, bytecode_index) = if let Some(index) = loaded_class
+            .class
+            .get_method_and_bytecode_index(&method_name)
+        {
+            index
+        } else {
+            return Err(JvmError::MethodNotFound {
+                class_name,
+                method_name,
+            }
+            .bx());
+        };
+
+        let mut thread = JvmThread::new();
+        let stack_frame = JvmStackFrame::new(
+            loaded_class.class.clone(),
+            method_index,
+            bytecode_index,
+            params,
+        );
+        thread.push(stack_frame);
+        Self::initialise_class(&mut thread, &loaded_class)?;
+        self.threads.push(thread);
+
+        self.run_thread()
+    }
+
+    fn run_thread(&mut self) -> Result<Option<JvmValue>, Box<JvmError>> {
+        assert!(!self.threads.is_empty());
+        let current_thread = &mut self.threads[0];
+
+        while current_thread.has_frames() {
+            let instruction = {
+                let frame = current_thread.peek().unwrap();
+                let method = &frame.class.methods[frame.method_index];
+                let bytecode = method.get_bytecode(frame.bytecode_index);
+                if frame.should_return || frame.program_counter >= bytecode.code.len() {
+                    if frame.is_void {
+                        current_thread.pop();
+                    } else {
+                        let old_frame = current_thread.pop().unwrap();
+                        let return_value = old_frame
+                            .return_value
+                            .expect("No value to return (TODO: use JVM error)");
+
+                        if current_thread.has_frames() {
+                            current_thread
+                                .peek()
+                                .unwrap()
+                                .operand_stack
+                                .push(return_value);
+                        } else {
+                            return Ok(Some(return_value));
+                        }
+                    };
+
+                    continue;
+                }
+
+                let instruction = bytecode.code[frame.program_counter];
+                frame.program_counter += 1;
+                instruction
+            };
+
+            BYTECODE_TABLE.execute_instruction(
+                instruction,
+                current_thread,
+                &mut self.heap,
+                &mut self.class_loader,
+            )?;
+        }
+
+        Ok(None)
+    }
+
+    fn initialise_class(
+        thread: &mut JvmThread,
+        loaded_class: &LoadedClass,
+    ) -> Result<(), Box<JvmError>> {
+        const INITIALISE_CLASS_METHOD: &str = "<clinit>";
+        if loaded_class.is_initialised {
+            return Ok(());
+        }
+
+        let (method_index, bytecode_index) = if let Some((m_index, b_index)) = loaded_class
+            .class
+            .get_method_and_bytecode_index(INITIALISE_CLASS_METHOD)
+        {
+            (m_index, b_index)
+        } else {
+            return Ok(());
+        };
+
+        thread.push(JvmStackFrame::new(
+            loaded_class.class.clone(),
+            method_index,
+            bytecode_index,
+            vec![],
+        ));
+
+        Ok(())
+    }
+}
