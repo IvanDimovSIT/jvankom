@@ -4,6 +4,26 @@ use std::{
 
 use crate::{class_file::ClassFile, class_parser::ClassParserError};
 
+#[derive(Debug, Clone, Copy)]
+pub enum JvmType {
+    Int,
+    Long,
+    Float,
+    Double,
+    Reference,
+}
+impl JvmType {
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Int => "Int",
+            Self::Long => "Long",
+            Self::Float => "Float",
+            Self::Double => "Double",
+            Self::Reference => "Reference",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum JvmError {
     ClassParserError(ClassParserError),
@@ -13,6 +33,17 @@ pub enum JvmError {
         method_name: String,
     },
     UnimplementedInstruction(u8),
+    NoOperandFound,
+    NoLocalVariableFound,
+    ProgramCounterOutOfBounds {
+        current_index: usize,
+        bytecode_len: usize,
+    },
+    TypeError {
+        expected: JvmType,
+        found: JvmType,
+    },
+    MissingReturnValue,
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -36,6 +67,21 @@ impl Display for JvmError {
                 "Instruction with code '{}' not yet implemented",
                 instruction
             )),
+            JvmError::NoOperandFound => Cow::Owned("No operand found".to_owned()),
+            JvmError::NoLocalVariableFound => Cow::Owned("No local variable found".to_owned()),
+            JvmError::TypeError { expected, found } => Cow::Owned(format!(
+                "Type error: expected {} found {}",
+                expected.description(),
+                found.description()
+            )),
+            JvmError::ProgramCounterOutOfBounds {
+                current_index,
+                bytecode_len,
+            } => Cow::Owned(format!(
+                "Program counter is out of bounds, index is {}, bytecode length is {}",
+                current_index, bytecode_len
+            )),
+            JvmError::MissingReturnValue => Cow::Owned("Missing method return value".to_owned()),
         };
 
         f.write_str(&description)
@@ -43,13 +89,27 @@ impl Display for JvmError {
 }
 impl Error for JvmError {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum JvmValue {
     Int(i32),
     Long(i64),
     Float(f32),
     Double(f64),
     Reference(Option<NonZeroUsize>),
+    /// Unusable value following longs and doubles
+    Unusable,
+}
+impl JvmValue {
+    pub fn get_type(self) -> JvmType {
+        match self {
+            Self::Int(_) => JvmType::Int,
+            Self::Long(_) => JvmType::Long,
+            Self::Float(_) => JvmType::Float,
+            Self::Double(_) => JvmType::Double,
+            Self::Reference(_) => JvmType::Reference,
+            Self::Unusable => panic!("Attempting to get the type of an unusable slot"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -106,8 +166,9 @@ impl JvmStackFrame {
     ) -> Self {
         let method = &class.methods[method_index];
         let bytecode = method.get_bytecode(bytecode_index);
-        let mut operand_stack = Vec::with_capacity(bytecode.max_stack as usize);
-        operand_stack.extend(params);
+        let operand_stack = Vec::with_capacity(bytecode.max_stack as usize);
+        let mut local_variables = Vec::with_capacity(bytecode.max_locals as usize);
+        local_variables.extend(params);
         let descriptor = class
             .constant_pool
             .get_utf8(method.descriptor_index)
@@ -116,7 +177,7 @@ impl JvmStackFrame {
 
         Self {
             method_index,
-            local_variables: Vec::with_capacity(bytecode.max_locals as usize),
+            local_variables,
             operand_stack,
             program_counter: 0,
             bytecode_index,

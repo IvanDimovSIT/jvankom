@@ -67,9 +67,11 @@ impl JVM {
                         current_thread.pop();
                     } else {
                         let old_frame = current_thread.pop().unwrap();
-                        let return_value = old_frame
-                            .return_value
-                            .expect("No value to return (TODO: use JVM error)");
+                        let return_value = if let Some(value) = old_frame.return_value {
+                            value
+                        } else {
+                            return Err(JvmError::MissingReturnValue.bx());
+                        };
 
                         if current_thread.has_frames() {
                             current_thread
@@ -127,5 +129,28 @@ impl JVM {
         ));
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    pub fn test_sum() {
+        let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
+        let result = jvm
+            .run(
+                "TestSum".to_owned(),
+                "sum".to_owned(),
+                vec![JvmValue::Int(9), JvmValue::Int(10)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(value) => assert_eq!(19, value),
+            _ => panic!("expected int"),
+        }
     }
 }

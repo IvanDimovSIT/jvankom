@@ -1,4 +1,4 @@
-use crate::jvm::JVM;
+use crate::{jvm::JVM, jvm_model::JvmValue};
 
 mod bytecode;
 mod class_file;
@@ -13,9 +13,22 @@ fn main() {
     println!("this class:{}", result.get_class_name().unwrap());
     println!("super class:{}", result.get_super_class_name().unwrap());
 
-    println!("{result:?}");
+    println!("Test.class:{result:?}");
+
+    let result = class_parser::parse("test_classes/TestSum.class").unwrap();
+
+    println!("this class:{}", result.get_class_name().unwrap());
+    println!("super class:{}", result.get_super_class_name().unwrap());
+
+    println!("TestSum.class:{result:?}");
 
     let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
-    jvm.run("Test".to_owned(), "hello".to_owned(), vec![])
+    let result = jvm
+        .run(
+            "TestSum".to_owned(),
+            "sum".to_owned(),
+            vec![JvmValue::Int(9), JvmValue::Int(10)],
+        )
         .unwrap();
+    println!("sum result={result:?}");
 }
