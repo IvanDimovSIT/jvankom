@@ -23,12 +23,6 @@ fn main() {
     println!("TestSum.class:{result:?}");
 
     let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
-    let result = jvm
-        .run(
-            "TestSum".to_owned(),
-            "sum".to_owned(),
-            vec![JvmValue::Int(9), JvmValue::Int(10)],
-        )
+    jvm.run("Test".to_owned(), "hello".to_owned(), vec![])
         .unwrap();
-    println!("sum result={result:?}");
 }

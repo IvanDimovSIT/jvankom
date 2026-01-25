@@ -57,9 +57,8 @@ impl JVM {
         assert!(!self.threads.is_empty());
         let current_thread = &mut self.threads[0];
 
-        while current_thread.has_frames() {
+        while let Some(frame) = current_thread.peek() {
             let instruction = {
-                let frame = current_thread.peek().unwrap();
                 let method = &frame.class.methods[frame.method_index];
                 let bytecode = method.get_bytecode(frame.bytecode_index);
                 if frame.should_return || frame.program_counter >= bytecode.code.len() {

@@ -9,20 +9,20 @@ type BytecodeInstruction =
 pub const BYTECODE_TABLE: BytecodeTable = BytecodeTable::new();
 
 pub struct BytecodeTable {
-    table: [Option<BytecodeInstruction>; 256],
+    table: [BytecodeInstruction; 256],
 }
 impl BytecodeTable {
     const fn new() -> Self {
-        let mut table: [Option<BytecodeInstruction>; 256] = [None; 256];
-        table[0x00] = Some(nop_instruction);
-        table[0x15] = Some(integer_load_n);
-        table[0x1a] = Some(integer_load::<0>);
-        table[0x1b] = Some(integer_load::<1>);
-        table[0x1c] = Some(integer_load::<2>);
-        table[0x1d] = Some(integer_load::<3>);
-        table[0x60] = Some(integer_add);
-        table[0xac] = Some(integer_return_instruction);
-        table[0xb1] = Some(return_instruction);
+        let mut table: [BytecodeInstruction; 256] = [handle_unrecognised_instruction; 256];
+        table[0x00] = nop_instruction;
+        table[0x15] = integer_load_n;
+        table[0x1a] = integer_load::<0>;
+        table[0x1b] = integer_load::<1>;
+        table[0x1c] = integer_load::<2>;
+        table[0x1d] = integer_load::<3>;
+        table[0x60] = integer_add;
+        table[0xac] = integer_return_instruction;
+        table[0xb1] = return_instruction;
 
         Self { table }
     }
@@ -35,11 +35,8 @@ impl BytecodeTable {
         class_loader: &mut ClassLoader,
     ) -> Result<(), Box<JvmError>> {
         let table_index = instruction as usize;
-        if let Some(handler) = self.table[table_index] {
-            handler(thread, heap, class_loader)
-        } else {
-            Err(JvmError::UnimplementedInstruction(instruction).bx())
-        }
+        let handler = self.table[table_index];
+        handler(thread, heap, class_loader)
     }
 }
 
@@ -146,6 +143,25 @@ fn integer_add(
     frame.operand_stack.push(result_value);
 
     Ok(())
+}
+
+fn handle_unrecognised_instruction(
+    thread: &mut JvmThread,
+    _heap: &mut JvmHeap,
+    _class_loader: &mut ClassLoader,
+) -> Result<(), Box<JvmError>> {
+    let frame = thread.peek().unwrap();
+    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+    assert!(frame.program_counter > 0);
+    let previous_index = frame.program_counter.saturating_sub(1);
+    let unrecognised_bytecode = bytecode.code[previous_index];
+
+    let instruction_fn_ptr =
+        BYTECODE_TABLE.table[unrecognised_bytecode as usize] as *const BytecodeInstruction;
+    let expected_fn_ptr = handle_unrecognised_instruction as *const BytecodeInstruction;
+    assert_eq!(expected_fn_ptr, instruction_fn_ptr);
+
+    Err(JvmError::UnimplementedInstruction(unrecognised_bytecode).bx())
 }
 
 #[inline]
