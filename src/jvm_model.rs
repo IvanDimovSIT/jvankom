@@ -2,7 +2,9 @@ use std::{
     borrow::Cow, collections::HashMap, error::Error, fmt::Display, num::NonZeroUsize, rc::Rc,
 };
 
-use crate::{class_file::ClassFile, class_parser::ClassParserError};
+use crate::{class_file::ClassFile, class_parser::ClassParserError, verifier::VerifierError};
+
+pub type JvmResult<T> = Result<T, Box<JvmError>>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum JvmType {
@@ -44,6 +46,7 @@ pub enum JvmError {
         found: JvmType,
     },
     MissingReturnValue,
+    ClassVerificationError(VerifierError),
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -54,34 +57,33 @@ impl Display for JvmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let description = match self {
             JvmError::ClassParserError(class_parser_error) => {
-                Cow::Owned(format!("{class_parser_error}"))
+                format!("{class_parser_error}")
             }
-            JvmError::ClassLoaderError(err) => Cow::Borrowed(err),
+            JvmError::ClassLoaderError(err) => err.to_owned(),
             JvmError::MethodNotFound {
                 class_name,
                 method_name,
-            } => Cow::Owned(format!(
-                "Method '{method_name}' not found for '{class_name}'"
-            )),
-            JvmError::UnimplementedInstruction(instruction) => Cow::Owned(format!(
+            } => format!("Method '{method_name}' not found for '{class_name}'"),
+            JvmError::UnimplementedInstruction(instruction) => format!(
                 "Instruction with code '{}' not yet implemented",
                 instruction
-            )),
-            JvmError::NoOperandFound => Cow::Owned("No operand found".to_owned()),
-            JvmError::NoLocalVariableFound => Cow::Owned("No local variable found".to_owned()),
-            JvmError::TypeError { expected, found } => Cow::Owned(format!(
+            ),
+            JvmError::NoOperandFound => "No operand found".to_owned(),
+            JvmError::NoLocalVariableFound => "No local variable found".to_owned(),
+            JvmError::TypeError { expected, found } => format!(
                 "Type error: expected {} found {}",
                 expected.description(),
                 found.description()
-            )),
+            ),
             JvmError::ProgramCounterOutOfBounds {
                 current_index,
                 bytecode_len,
-            } => Cow::Owned(format!(
+            } => format!(
                 "Program counter is out of bounds, index is {}, bytecode length is {}",
                 current_index, bytecode_len
-            )),
-            JvmError::MissingReturnValue => Cow::Owned("Missing method return value".to_owned()),
+            ),
+            JvmError::MissingReturnValue => "Missing method return value".to_owned(),
+            JvmError::ClassVerificationError(err) => format!("Verification error:{}", err),
         };
 
         f.write_str(&description)

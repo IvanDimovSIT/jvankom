@@ -2,8 +2,9 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     class_file::ClassFile,
-    class_parser::{self, ClassParserError},
-    jvm_model::JvmError,
+    class_parser::{self, ClassParserError, UnverifiedClassFile},
+    jvm_model::{JvmError, JvmResult},
+    verifier,
 };
 
 #[derive(Debug)]
@@ -25,7 +26,7 @@ impl ClassLoader {
         }
     }
 
-    pub fn get(&mut self, class_name: &str) -> Result<LoadedClass, JvmError> {
+    pub fn get(&mut self, class_name: &str) -> JvmResult<LoadedClass> {
         let initialised_class = self.loaded_classes.get(class_name);
         if let Some(class) = initialised_class {
             let loaded_class = LoadedClass {
@@ -46,30 +47,37 @@ impl ClassLoader {
         Ok(loaded_class)
     }
 
-    fn find_class_file(&self, class_name: &str) -> Result<ClassFile, JvmError> {
+    fn find_class_file(&self, class_name: &str) -> JvmResult<ClassFile> {
         for path in &self.contexts {
             let class_path = format!("{path}/{class_name}.class");
             let class_result = class_parser::parse(&class_path);
             match class_result {
                 Ok(class) => {
-                    return Ok(class);
+                    return Self::verify(class);
                 }
                 Err(ClassParserError::ErrorReadingFile(_)) => {
                     continue;
                 }
                 Err(err) => {
-                    return Err(JvmError::ClassParserError(err));
+                    return Err(JvmError::ClassParserError(err).bx());
                 }
             }
         }
 
         let class_result = class_parser::parse(&format!("{class_name}.class"));
         match class_result {
-            Ok(class) => Ok(class),
-            Err(ClassParserError::ErrorReadingFile(err)) => Err(JvmError::ClassLoaderError(
-                format!("Cannot find '{class_name}':{err}"),
-            )),
-            Err(err) => Err(JvmError::ClassParserError(err)),
+            Ok(class) => Self::verify(class),
+            Err(ClassParserError::ErrorReadingFile(err)) => {
+                Err(JvmError::ClassLoaderError(format!("Cannot find '{class_name}':{err}")).bx())
+            }
+            Err(err) => Err(JvmError::ClassParserError(err).bx()),
+        }
+    }
+
+    fn verify(unverified_class_file: UnverifiedClassFile) -> JvmResult<ClassFile> {
+        match verifier::verify_class_file(unverified_class_file) {
+            Ok(class_file) => Ok(class_file),
+            Err(err) => Err(JvmError::ClassVerificationError(err).bx()),
         }
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     bytecode::BYTECODE_TABLE,
     class_loader::{ClassLoader, LoadedClass},
-    jvm_model::{JvmError, JvmHeap, JvmStackFrame, JvmThread, JvmValue},
+    jvm_model::{JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmValue},
 };
 
 pub struct JVM {
@@ -18,12 +18,37 @@ impl JVM {
         }
     }
 
+    pub fn initialise_class(thread: &mut JvmThread, loaded_class: &LoadedClass) -> JvmResult<()> {
+        const INITIALISE_CLASS_METHOD: &str = "<clinit>";
+        if loaded_class.is_initialised {
+            return Ok(());
+        }
+
+        let (method_index, bytecode_index) = if let Some((m_index, b_index)) = loaded_class
+            .class
+            .get_method_and_bytecode_index(INITIALISE_CLASS_METHOD)
+        {
+            (m_index, b_index)
+        } else {
+            return Ok(());
+        };
+
+        thread.push(JvmStackFrame::new(
+            loaded_class.class.clone(),
+            method_index,
+            bytecode_index,
+            vec![],
+        ));
+
+        Ok(())
+    }
+
     pub fn run(
         &mut self,
         class_name: String,
         method_name: String,
         params: Vec<JvmValue>,
-    ) -> Result<Option<JvmValue>, Box<JvmError>> {
+    ) -> JvmResult<Option<JvmValue>> {
         let loaded_class = self.class_loader.get(&class_name)?;
 
         let (method_index, bytecode_index) = if let Some(index) = loaded_class
@@ -53,7 +78,7 @@ impl JVM {
         self.run_thread()
     }
 
-    fn run_thread(&mut self) -> Result<Option<JvmValue>, Box<JvmError>> {
+    fn run_thread(&mut self) -> JvmResult<Option<JvmValue>> {
         assert!(!self.threads.is_empty());
         let current_thread = &mut self.threads[0];
 
@@ -61,7 +86,7 @@ impl JVM {
             let instruction = {
                 let method = &frame.class.methods[frame.method_index];
                 let bytecode = method.get_bytecode(frame.bytecode_index);
-                if frame.should_return || frame.program_counter >= bytecode.code.len() {
+                if frame.should_return {
                     if frame.is_void {
                         current_thread.pop();
                     } else {
@@ -85,6 +110,7 @@ impl JVM {
 
                     continue;
                 }
+                debug_assert!(frame.program_counter < bytecode.code.len());
 
                 let instruction = bytecode.code[frame.program_counter];
                 frame.program_counter += 1;
@@ -100,34 +126,6 @@ impl JVM {
         }
 
         Ok(None)
-    }
-
-    fn initialise_class(
-        thread: &mut JvmThread,
-        loaded_class: &LoadedClass,
-    ) -> Result<(), Box<JvmError>> {
-        const INITIALISE_CLASS_METHOD: &str = "<clinit>";
-        if loaded_class.is_initialised {
-            return Ok(());
-        }
-
-        let (method_index, bytecode_index) = if let Some((m_index, b_index)) = loaded_class
-            .class
-            .get_method_and_bytecode_index(INITIALISE_CLASS_METHOD)
-        {
-            (m_index, b_index)
-        } else {
-            return Ok(());
-        };
-
-        thread.push(JvmStackFrame::new(
-            loaded_class.class.clone(),
-            method_index,
-            bytecode_index,
-            vec![],
-        ));
-
-        Ok(())
     }
 }
 

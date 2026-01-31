@@ -1,8 +1,9 @@
 use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
 use crate::class_file::{
-    Attribute, Bytecode, ClassAccessFlags, ClassFile, ConstantPool, ConstantValue,
-    ExceptionTableEntry, Field, FieldAccessFlags, InnerClass, Method, MethodAccessFlags,
+    Attribute, Bytecode, ClassAccessFlags, ClassFile, ClassFileVersion, ConstantPool,
+    ConstantValue, ExceptionTableEntry, Field, FieldAccessFlags, InnerClass, Method,
+    MethodAccessFlags,
 };
 
 const CLASS_FILE_MAGIC: u32 = 0xCAFEBABE;
@@ -26,7 +27,15 @@ const CONSTANT_VALUE_ATTRIBUTE_NAME: &str = "ConstantValue";
 const SOURCE_FILE_ATTRIBUTE_NAME: &str = "SourceFile";
 const INNER_CLASSES_ATTRIBUTE_NAME: &str = "InnerClasses";
 
-pub fn parse(class_file_path: &str) -> Result<ClassFile, ClassParserError> {
+#[derive(Debug)]
+pub struct UnverifiedClassFile(ClassFile);
+impl UnverifiedClassFile {
+    pub fn mark_verified(self) -> ClassFile {
+        self.0
+    }
+}
+
+pub fn parse(class_file_path: &str) -> Result<UnverifiedClassFile, ClassParserError> {
     let bytes_result = std::fs::read(class_file_path);
     if let Ok(bytes) = bytes_result {
         parse_from_bytes(bytes)
@@ -37,7 +46,7 @@ pub fn parse(class_file_path: &str) -> Result<ClassFile, ClassParserError> {
     }
 }
 
-pub fn parse_from_bytes(bytes: Vec<u8>) -> Result<ClassFile, ClassParserError> {
+pub fn parse_from_bytes(bytes: Vec<u8>) -> Result<UnverifiedClassFile, ClassParserError> {
     if bytes.is_empty() {
         return Err(ClassParserError::EmptyFile);
     }
@@ -105,9 +114,9 @@ impl ClassParser {
         Self { bytes, index: 0 }
     }
 
-    fn parse_class_file(mut self) -> Result<ClassFile, ClassParserError> {
+    fn parse_class_file(mut self) -> Result<UnverifiedClassFile, ClassParserError> {
         self.validate_magic()?;
-        let (_major, _minor) = self.parse_versions()?;
+        let version = self.parse_versions()?;
         let constant_pool = self.parse_constant_pool()?;
         let access_flags = self.parse_class_access_flags()?;
         let this_class = self.parse_index(constant_pool.len())?;
@@ -130,9 +139,10 @@ impl ClassParser {
             fields,
             access_flags,
             attributes,
+            version,
         };
 
-        Ok(class_file)
+        Ok(UnverifiedClassFile(class_file))
     }
 
     fn parse_class_access_flags(&mut self) -> Result<ClassAccessFlags, ClassParserError> {
@@ -572,8 +582,10 @@ impl ClassParser {
         Ok(ConstantValue::Utf8(string))
     }
 
-    fn parse_versions(&mut self) -> Result<(u16, u16), ClassParserError> {
-        Ok((self.parse_u16()?, self.parse_u16()?))
+    fn parse_versions(&mut self) -> Result<ClassFileVersion, ClassParserError> {
+        let minor = self.parse_u16()?;
+        let major = self.parse_u16()?;
+        Ok(ClassFileVersion { major, minor })
     }
 
     fn validate_magic(&mut self) -> Result<(), ClassParserError> {
@@ -678,10 +690,12 @@ mod tests {
 
     #[test]
     fn test_parse_ok() {
-        let class = parse(TEST_CLASS_FILE_PATH).unwrap();
+        let class = parse(TEST_CLASS_FILE_PATH).unwrap().0;
         assert_eq!("Test", class.get_class_name().unwrap());
         assert_eq!("java/lang/Object", class.get_super_class_name().unwrap());
         assert_eq!(1, class.fields.len());
+        assert_eq!(65, class.version.major);
+        assert_eq!(0, class.version.minor);
         assert!(class.interfaces.is_empty());
 
         let field = &class.fields[0];

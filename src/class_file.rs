@@ -281,8 +281,15 @@ impl ClassAccessFlags {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ClassFileVersion {
+    pub major: u16,
+    pub minor: u16,
+}
+
 #[derive(Debug, Clone)]
 pub struct ClassFile {
+    pub version: ClassFileVersion,
     pub class_index: NonZeroUsize,
     pub super_class_index: Option<NonZeroUsize>,
     pub interfaces: Vec<NonZeroUsize>,
@@ -304,15 +311,11 @@ impl ClassFile {
     pub fn get_method_and_bytecode_index(&self, method_name: &str) -> Option<(usize, usize)> {
         for (index, method) in self.methods.iter().enumerate() {
             if self.constant_pool.get_utf8(method.name_index)? == method_name {
-                let (bytecode_index, _) =
-                    method
-                        .attributes
-                        .iter()
-                        .enumerate()
-                        .find(|(_, atr)| match atr {
-                            Attribute::Code(_) => true,
-                            _ => false,
-                        })?;
+                let (bytecode_index, _) = method
+                    .attributes
+                    .iter()
+                    .enumerate()
+                    .find(|(_, atr)| matches!(atr, Attribute::Code(_)))?;
 
                 return Some((index, bytecode_index));
             }

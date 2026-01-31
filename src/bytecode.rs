@@ -1,10 +1,19 @@
 use crate::{
     class_loader::ClassLoader,
-    jvm_model::{JvmError, JvmHeap, JvmThread, JvmType, JvmValue},
+    jvm_model::{JvmError, JvmHeap, JvmResult, JvmThread, JvmType, JvmValue},
 };
 
-type BytecodeInstruction =
-    fn(&mut JvmThread, &mut JvmHeap, &mut ClassLoader) -> Result<(), Box<JvmError>>;
+pub const NOP: u8 = 0x00;
+pub const ILOAD: u8 = 0x15;
+pub const ILOAD_0: u8 = 0x1a;
+pub const ILOAD_1: u8 = 0x1b;
+pub const ILOAD_2: u8 = 0x1c;
+pub const ILOAD_3: u8 = 0x1d;
+pub const IADD: u8 = 0x60;
+pub const IRETURN: u8 = 0xac;
+pub const RETURN: u8 = 0xb1;
+
+type BytecodeInstruction = fn(&mut JvmThread, &mut JvmHeap, &mut ClassLoader) -> JvmResult<()>;
 
 pub const BYTECODE_TABLE: BytecodeTable = BytecodeTable::new();
 
@@ -14,15 +23,25 @@ pub struct BytecodeTable {
 impl BytecodeTable {
     const fn new() -> Self {
         let mut table: [BytecodeInstruction; 256] = [handle_unrecognised_instruction; 256];
-        table[0x00] = nop_instruction;
-        table[0x15] = integer_load_n;
-        table[0x1a] = integer_load::<0>;
-        table[0x1b] = integer_load::<1>;
-        table[0x1c] = integer_load::<2>;
-        table[0x1d] = integer_load::<3>;
-        table[0x60] = integer_add;
-        table[0xac] = integer_return_instruction;
-        table[0xb1] = return_instruction;
+        let instructions: [(u8, BytecodeInstruction); _] = [
+            (NOP, nop_instruction),
+            (ILOAD, integer_load_n),
+            (ILOAD_0, integer_load::<0>),
+            (ILOAD_1, integer_load::<1>),
+            (ILOAD_2, integer_load::<2>),
+            (ILOAD_3, integer_load::<3>),
+            (IADD, integer_add),
+            (IRETURN, integer_return_instruction),
+            (RETURN, return_instruction),
+        ];
+
+        let mut i = 0;
+        while i < instructions.len() {
+            let instruction = instructions[i].0;
+            let function = instructions[i].1;
+            table[instruction as usize] = function;
+            i += 1;
+        }
 
         Self { table }
     }
@@ -33,7 +52,7 @@ impl BytecodeTable {
         thread: &mut JvmThread,
         heap: &mut JvmHeap,
         class_loader: &mut ClassLoader,
-    ) -> Result<(), Box<JvmError>> {
+    ) -> JvmResult<()> {
         let table_index = instruction as usize;
         let handler = self.table[table_index];
         handler(thread, heap, class_loader)
@@ -44,7 +63,7 @@ fn nop_instruction(
     _thread: &mut JvmThread,
     _heap: &mut JvmHeap,
     _class_loader: &mut ClassLoader,
-) -> Result<(), Box<JvmError>> {
+) -> JvmResult<()> {
     Ok(())
 }
 
@@ -52,7 +71,7 @@ fn return_instruction(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
     _class_loader: &mut ClassLoader,
-) -> Result<(), Box<JvmError>> {
+) -> JvmResult<()> {
     let frame = thread.peek().unwrap();
     frame.should_return = true;
 
@@ -63,7 +82,7 @@ fn integer_return_instruction(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
     _class_loader: &mut ClassLoader,
-) -> Result<(), Box<JvmError>> {
+) -> JvmResult<()> {
     let frame = thread.peek().unwrap();
     if let Some(value_to_return) = frame.operand_stack.pop() {
         expect_int(value_to_return)?;
@@ -80,7 +99,7 @@ fn integer_load_n(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
     _class_loader: &mut ClassLoader,
-) -> Result<(), Box<JvmError>> {
+) -> JvmResult<()> {
     let frame = thread.peek().unwrap();
     let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     if frame.program_counter >= bytecode.code.len() {
@@ -107,7 +126,7 @@ fn integer_load<const INDEX: usize>(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
     _class_loader: &mut ClassLoader,
-) -> Result<(), Box<JvmError>> {
+) -> JvmResult<()> {
     let frame = thread.peek().unwrap();
 
     if let Some(value) = frame.local_variables.get(INDEX) {
@@ -124,7 +143,7 @@ fn integer_add(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
     _class_loader: &mut ClassLoader,
-) -> Result<(), Box<JvmError>> {
+) -> JvmResult<()> {
     let frame = thread.peek().unwrap();
 
     let value_a = if let Some(a) = frame.operand_stack.pop() {
@@ -139,7 +158,7 @@ fn integer_add(
         return Err(JvmError::NoOperandFound.bx());
     };
 
-    let result_value = JvmValue::Int(value_a + value_b);
+    let result_value = JvmValue::Int(value_a.wrapping_add(value_b));
     frame.operand_stack.push(result_value);
 
     Ok(())
@@ -149,7 +168,7 @@ fn handle_unrecognised_instruction(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
     _class_loader: &mut ClassLoader,
-) -> Result<(), Box<JvmError>> {
+) -> JvmResult<()> {
     let frame = thread.peek().unwrap();
     let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     assert!(frame.program_counter > 0);
@@ -165,7 +184,7 @@ fn handle_unrecognised_instruction(
 }
 
 #[inline]
-fn expect_int(value: JvmValue) -> Result<i32, Box<JvmError>> {
+fn expect_int(value: JvmValue) -> JvmResult<i32> {
     match value {
         JvmValue::Int(v) => Ok(v),
         _ => Err(JvmError::TypeError {
