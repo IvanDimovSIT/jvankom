@@ -53,31 +53,46 @@ impl ClassLoader {
             let class_result = class_parser::parse(&class_path);
             match class_result {
                 Ok(class) => {
-                    return Self::verify(class);
+                    return Self::verify(class, class_name);
                 }
                 Err(ClassParserError::ErrorReadingFile(_)) => {
                     continue;
                 }
-                Err(err) => {
-                    return Err(JvmError::ClassParserError(err).bx());
+                Err(error) => {
+                    return Err(JvmError::ClassParserError {
+                        parsed_class: class_name.to_owned(),
+                        error,
+                    }
+                    .bx());
                 }
             }
         }
 
         let class_result = class_parser::parse(&format!("{class_name}.class"));
         match class_result {
-            Ok(class) => Self::verify(class),
+            Ok(class) => Self::verify(class, class_name),
             Err(ClassParserError::ErrorReadingFile(err)) => {
                 Err(JvmError::ClassLoaderError(format!("Cannot find '{class_name}':{err}")).bx())
             }
-            Err(err) => Err(JvmError::ClassParserError(err).bx()),
+            Err(error) => Err(JvmError::ClassParserError {
+                parsed_class: class_name.to_owned(),
+                error,
+            }
+            .bx()),
         }
     }
 
-    fn verify(unverified_class_file: UnverifiedClassFile) -> JvmResult<ClassFile> {
+    fn verify(
+        unverified_class_file: UnverifiedClassFile,
+        class_name: &str,
+    ) -> JvmResult<ClassFile> {
         match verifier::verify_class_file(unverified_class_file) {
             Ok(class_file) => Ok(class_file),
-            Err(err) => Err(JvmError::ClassVerificationError(err).bx()),
+            Err(error) => Err(JvmError::ClassVerificationError {
+                error,
+                verified_class: class_name.to_owned(),
+            }
+            .bx()),
         }
     }
 }

@@ -1,6 +1,4 @@
-use std::{
-    borrow::Cow, collections::HashMap, error::Error, fmt::Display, num::NonZeroUsize, rc::Rc,
-};
+use std::{collections::HashMap, error::Error, fmt::Display, num::NonZeroUsize, rc::Rc};
 
 use crate::{class_file::ClassFile, class_parser::ClassParserError, verifier::VerifierError};
 
@@ -28,7 +26,10 @@ impl JvmType {
 
 #[derive(Debug, Clone)]
 pub enum JvmError {
-    ClassParserError(ClassParserError),
+    ClassParserError {
+        parsed_class: String,
+        error: ClassParserError,
+    },
     ClassLoaderError(String),
     MethodNotFound {
         class_name: String,
@@ -46,7 +47,10 @@ pub enum JvmError {
         found: JvmType,
     },
     MissingReturnValue,
-    ClassVerificationError(VerifierError),
+    ClassVerificationError {
+        verified_class: String,
+        error: VerifierError,
+    },
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -56,8 +60,11 @@ impl JvmError {
 impl Display for JvmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let description = match self {
-            JvmError::ClassParserError(class_parser_error) => {
-                format!("{class_parser_error}")
+            JvmError::ClassParserError {
+                parsed_class,
+                error,
+            } => {
+                format!("Parsing error:{error} for '{parsed_class}'")
             }
             JvmError::ClassLoaderError(err) => err.to_owned(),
             JvmError::MethodNotFound {
@@ -83,7 +90,10 @@ impl Display for JvmError {
                 current_index, bytecode_len
             ),
             JvmError::MissingReturnValue => "Missing method return value".to_owned(),
-            JvmError::ClassVerificationError(err) => format!("Verification error:{}", err),
+            JvmError::ClassVerificationError {
+                verified_class,
+                error,
+            } => format!("Verification error:{error} for '{verified_class}'"),
         };
 
         f.write_str(&description)

@@ -1,23 +1,27 @@
 use std::{error::Error, fmt::Display};
 
 use crate::{
-    bytecode::{IRETURN, RETURN},
-    class_file::{Attribute, ClassFile, Method},
+    bytecode::{ILOAD, IRETURN, RETURN},
+    class_file::{Attribute, Bytecode, ClassFile, Method},
     class_parser::UnverifiedClassFile,
 };
 
 const RETURN_INSTRUCTIONS: [u8; 2] = [RETURN, IRETURN];
+/// instructions which load a local, based on the bytecode
+const LOAD_N_INSTRUCTIONS: [u8; 1] = [ILOAD];
 
 #[derive(Debug, Clone)]
 pub enum VerifierError {
     MissingMethodDescriptor,
     MissingReturnFromMethod,
+    InvalidLoadInstruction,
 }
 impl Display for VerifierError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let desc = match self {
             VerifierError::MissingMethodDescriptor => "Missing method descriptor",
             VerifierError::MissingReturnFromMethod => "Missing return instruction from method",
+            VerifierError::InvalidLoadInstruction => "Invalid load instruction",
         };
 
         f.write_str(desc)
@@ -38,6 +42,7 @@ pub fn verify_class_file(
 ) -> Result<ClassFile, VerifierError> {
     let class = unverified_class_file.mark_verified();
     verify_returns(&class)?;
+    verify_loads(&class)?;
     Ok(class)
 }
 
@@ -62,6 +67,43 @@ fn verify_returns(class: &ClassFile) -> Result<(), VerifierError> {
             } else {
                 Err(VerifierError::MissingReturnFromMethod)
             };
+        }
+    }
+
+    Ok(())
+}
+
+fn verify_loads(class: &ClassFile) -> Result<(), VerifierError> {
+    for method in &class.methods {
+        for atr in &method.attributes {
+            match atr {
+                Attribute::Code(bytecode) => {
+                    verify_load_bytecode(bytecode)?;
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn verify_load_bytecode(bytecode: &Bytecode) -> Result<(), VerifierError> {
+    let bytecode_len = bytecode.code.len();
+    if bytecode_len < 2 {
+        return Ok(());
+    }
+    if LOAD_N_INSTRUCTIONS.contains(&bytecode.code[bytecode_len - 2]) {
+        return Err(VerifierError::InvalidLoadInstruction);
+    }
+    for codes in bytecode.code.windows(2) {
+        if !LOAD_N_INSTRUCTIONS.contains(&codes[0]) {
+            continue;
+        }
+
+        let load_address = codes[1];
+        if load_address as u16 >= bytecode.max_locals {
+            return Err(VerifierError::InvalidLoadInstruction);
         }
     }
 
