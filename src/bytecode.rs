@@ -1,17 +1,49 @@
+use std::{array, num::NonZeroUsize};
+
 use crate::{
     class_loader::ClassLoader,
-    jvm_model::{JvmError, JvmHeap, JvmResult, JvmThread, JvmType, JvmValue},
+    jvm_model::{
+        HeapObject, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmType, JvmValue,
+    },
 };
 
+use constants_instructions::*;
+use control_instructions::*;
+use load_instructions::*;
+use math_instructions::*;
+use references_instructions::*;
+use store_instructions::*;
+
+mod constants_instructions;
+mod control_instructions;
+mod load_instructions;
+mod math_instructions;
+mod references_instructions;
+mod store_instructions;
+
+// From https://docs.oracle.com/javase/specs/jvms/se7/html/jvms-7.html
 pub const NOP: u8 = 0x00;
 pub const ILOAD: u8 = 0x15;
+pub const ALOAD: u8 = 0x19;
 pub const ILOAD_0: u8 = 0x1a;
 pub const ILOAD_1: u8 = 0x1b;
 pub const ILOAD_2: u8 = 0x1c;
 pub const ILOAD_3: u8 = 0x1d;
+pub const ALOAD_0: u8 = 0x2a;
+pub const ALOAD_1: u8 = 0x2b;
+pub const ALOAD_2: u8 = 0x2c;
+pub const ALOAD_3: u8 = 0x2d;
+pub const IALOAD: u8 = 0x2e;
+pub const ASTORE: u8 = 0x3a;
 pub const IADD: u8 = 0x60;
+pub const ASTORE_0: u8 = 0x4b;
+pub const ASTORE_1: u8 = 0x4c;
+pub const ASTORE_2: u8 = 0x4d;
+pub const ASTORE_3: u8 = 0x4e;
+pub const IASTORE: u8 = 0x4f;
 pub const IRETURN: u8 = 0xac;
 pub const RETURN: u8 = 0xb1;
+pub const NEWARRAY: u8 = 0xbc;
 
 type BytecodeInstruction = fn(&mut JvmThread, &mut JvmHeap, &mut ClassLoader) -> JvmResult<()>;
 
@@ -26,13 +58,26 @@ impl BytecodeTable {
         let instructions: [(u8, BytecodeInstruction); _] = [
             (NOP, nop_instruction),
             (ILOAD, integer_load_n),
+            (ALOAD, reference_load_n),
             (ILOAD_0, integer_load::<0>),
             (ILOAD_1, integer_load::<1>),
             (ILOAD_2, integer_load::<2>),
             (ILOAD_3, integer_load::<3>),
+            (ALOAD_0, reference_load_instruction::<0>),
+            (ALOAD_1, reference_load_instruction::<1>),
+            (ALOAD_2, reference_load_instruction::<2>),
+            (ALOAD_3, reference_load_instruction::<3>),
+            (IALOAD, load_integer_array_instruction),
+            (ASTORE, store_reference_n_instruction),
             (IADD, integer_add),
+            (ASTORE_0, store_reference_instruction::<0>),
+            (ASTORE_1, store_reference_instruction::<1>),
+            (ASTORE_2, store_reference_instruction::<2>),
+            (ASTORE_3, store_reference_instruction::<3>),
+            (IASTORE, store_integer_array_instruction),
             (IRETURN, integer_return_instruction),
             (RETURN, return_instruction),
+            (NEWARRAY, new_array_instruction),
         ];
 
         let mut i = 0;
@@ -59,111 +104,6 @@ impl BytecodeTable {
     }
 }
 
-fn nop_instruction(
-    _thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    Ok(())
-}
-
-fn return_instruction(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
-    frame.should_return = true;
-
-    Ok(())
-}
-
-fn integer_return_instruction(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
-    if let Some(value_to_return) = frame.operand_stack.pop() {
-        expect_int(value_to_return)?;
-        frame.should_return = true;
-        frame.return_value = Some(value_to_return);
-    } else {
-        return Err(JvmError::NoOperandFound.bx());
-    }
-
-    Ok(())
-}
-
-fn integer_load_n(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
-    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
-    if frame.program_counter >= bytecode.code.len() {
-        return Err(JvmError::ProgramCounterOutOfBounds {
-            current_index: frame.program_counter,
-            bytecode_len: bytecode.code.len(),
-        }
-        .bx());
-    }
-    let index_value = bytecode.code[frame.program_counter] as usize;
-    frame.program_counter += 1;
-
-    if let Some(value) = frame.local_variables.get(index_value) {
-        expect_int(*value)?;
-        frame.operand_stack.push(*value);
-    } else {
-        return Err(JvmError::NoLocalVariableFound.bx());
-    }
-
-    Ok(())
-}
-
-fn integer_load<const INDEX: usize>(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
-
-    if let Some(value) = frame.local_variables.get(INDEX) {
-        expect_int(*value)?;
-        frame.operand_stack.push(*value);
-    } else {
-        return Err(JvmError::NoLocalVariableFound.bx());
-    }
-
-    Ok(())
-}
-
-fn integer_add(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
-
-    let value_a = if let Some(a) = frame.operand_stack.pop() {
-        expect_int(a)?
-    } else {
-        return Err(JvmError::NoOperandFound.bx());
-    };
-
-    let value_b = if let Some(b) = frame.operand_stack.pop() {
-        expect_int(b)?
-    } else {
-        return Err(JvmError::NoOperandFound.bx());
-    };
-
-    let result_value = JvmValue::Int(value_a.wrapping_add(value_b));
-    frame.operand_stack.push(result_value);
-
-    Ok(())
-}
-
 fn handle_unrecognised_instruction(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
@@ -181,6 +121,36 @@ fn handle_unrecognised_instruction(
     assert_eq!(expected_fn_ptr, instruction_fn_ptr);
 
     Err(JvmError::UnimplementedInstruction(unrecognised_bytecode).bx())
+}
+
+#[inline]
+fn pop_int(frame: &mut JvmStackFrame) -> JvmResult<i32> {
+    if let Some(a) = frame.operand_stack.pop() {
+        expect_int(a)
+    } else {
+        Err(JvmError::NoOperandFound.bx())
+    }
+}
+
+#[inline]
+fn pop_reference(frame: &mut JvmStackFrame) -> JvmResult<Option<NonZeroUsize>> {
+    if let Some(a) = frame.operand_stack.pop() {
+        expect_reference(a)
+    } else {
+        Err(JvmError::NoOperandFound.bx())
+    }
+}
+
+#[inline]
+fn expect_reference(value: JvmValue) -> JvmResult<Option<NonZeroUsize>> {
+    match value {
+        JvmValue::Reference(reference) => Ok(reference),
+        _ => Err(JvmError::TypeError {
+            expected: JvmType::Reference,
+            found: value.get_type(),
+        }
+        .bx()),
+    }
 }
 
 #[inline]

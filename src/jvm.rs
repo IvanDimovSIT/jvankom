@@ -150,4 +150,22 @@ mod tests {
             _ => panic!("expected int"),
         }
     }
+
+    #[test]
+    pub fn test_int_array_creation_and_indexing() {
+        let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
+        let result = jvm
+            .run(
+                "TestSum".to_owned(),
+                "arrayTest".to_owned(),
+                vec![JvmValue::Int(100), JvmValue::Int(0), JvmValue::Int(3)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(value) => assert_eq!(100, value),
+            _ => panic!("expected int"),
+        }
+    }
 }

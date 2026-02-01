@@ -47,10 +47,13 @@ pub enum JvmError {
         found: JvmType,
     },
     MissingReturnValue,
+    InvalidReference,
+    InvalidArrayType(u8),
     ClassVerificationError {
         verified_class: String,
         error: VerifierError,
     },
+    IncompatibleArrayType,
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -94,6 +97,9 @@ impl Display for JvmError {
                 verified_class,
                 error,
             } => format!("Verification error:{error} for '{verified_class}'"),
+            JvmError::InvalidArrayType(array_type) => format!("Invalid array type '{array_type}'"),
+            JvmError::InvalidReference => "Reference points to invalid memory".to_owned(),
+            JvmError::IncompatibleArrayType => "Incompatible array type".to_owned(),
         };
 
         f.write_str(&description)
@@ -125,9 +131,20 @@ impl JvmValue {
 }
 
 #[derive(Debug, Clone)]
-pub struct HeapObject {
-    pub class: Rc<ClassFile>,
-    pub fields: Vec<JvmValue>,
+pub enum HeapObject {
+    Object {
+        class: Rc<ClassFile>,
+        fields: Vec<JvmValue>,
+    },
+    IntArray(Vec<i32>),
+    ByteArray(Vec<i8>),
+    BooleanArray(Vec<bool>),
+    CharacterArray(Vec<u16>),
+    ShortArray(Vec<i16>),
+    FloatArray(Vec<f32>),
+    DoubleArray(Vec<f64>),
+    LongArray(Vec<i64>),
+    ObjectArray(Vec<Option<NonZeroUsize>>),
 }
 
 #[derive(Debug, Clone)]
@@ -179,8 +196,9 @@ impl JvmStackFrame {
         let method = &class.methods[method_index];
         let bytecode = method.get_bytecode(bytecode_index);
         let operand_stack = Vec::with_capacity(bytecode.max_stack as usize);
-        let mut local_variables = Vec::with_capacity(bytecode.max_locals as usize);
-        local_variables.extend(params);
+        let mut local_variables = vec![JvmValue::Unusable; bytecode.max_locals as usize];
+        debug_assert!(params.len() <= bytecode.max_locals as usize);
+        local_variables[..params.len()].copy_from_slice(&params[..]);
         let descriptor = class
             .constant_pool
             .get_utf8(method.descriptor_index)
@@ -198,6 +216,19 @@ impl JvmStackFrame {
             should_return: false,
             return_value: None,
         }
+    }
+
+    pub fn debug_print(&self) {
+        let program_counter = self.program_counter;
+        let bytecode = &self.class.methods[self.method_index]
+            .get_bytecode(self.bytecode_index)
+            .code;
+        let stack = &self.operand_stack;
+        let locals = &self.local_variables;
+
+        println!(
+            "code:\n{bytecode:?}\nprogram counter:\n{program_counter}\nstack:\n{stack:?}\nlocals:\n{locals:?}"
+        );
     }
 }
 

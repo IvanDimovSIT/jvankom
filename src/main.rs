@@ -1,4 +1,4 @@
-use crate::jvm::JVM;
+use crate::{jvm::JVM, jvm_model::JvmValue};
 
 mod bytecode;
 mod class_file;
@@ -9,22 +9,20 @@ mod jvm_model;
 mod verifier;
 
 fn main() {
-    let result = class_parser::parse("test_classes/Test.class").unwrap();
-    let class = verifier::verify_class_file(result).unwrap();
-
-    println!("this class:{}", class.get_class_name().unwrap());
-    println!("super class:{}", class.get_super_class_name().unwrap());
-
-    println!("Test.class:{class:?}");
-
-    let result = class_parser::parse("test_classes/TestSum.class").unwrap();
-
-    println!("this class:{}", class.get_class_name().unwrap());
-    println!("super class:{}", class.get_super_class_name().unwrap());
-
-    println!("TestSum.class:{result:?}");
+    let class =
+        verifier::verify_class_file(class_parser::parse("test_classes/TestSum.class").unwrap())
+            .unwrap();
+    println!("File:\n{class:?}");
 
     let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
-    jvm.run("Test".to_owned(), "hello".to_owned(), vec![])
+    let result = jvm
+        .run(
+            "TestSum".to_owned(),
+            "arrayTest".to_owned(),
+            vec![JvmValue::Int(100), JvmValue::Int(0), JvmValue::Int(3)],
+        )
+        .unwrap()
         .unwrap();
+
+    println!("{result:?}");
 }
