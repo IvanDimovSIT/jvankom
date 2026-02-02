@@ -168,4 +168,22 @@ mod tests {
             _ => panic!("expected int"),
         }
     }
+
+    #[test]
+    pub fn test_constants() {
+        let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
+        let result = jvm
+            .run(
+                "TestSum".to_owned(),
+                "constants".to_owned(),
+                vec![JvmValue::Int(100)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(value) => assert_eq!(102, value),
+            _ => panic!("expected int"),
+        }
+    }
 }
