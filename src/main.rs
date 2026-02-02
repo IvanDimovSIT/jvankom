@@ -17,7 +17,7 @@ fn main() {
     let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
     let result = jvm
         .run(
-            "TestSum".to_owned(),
+            "TestSimple".to_owned(),
             "constants".to_owned(),
             vec![JvmValue::Int(100)],
         )

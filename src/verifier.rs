@@ -7,7 +7,7 @@ use crate::{
 };
 
 const RETURN_INSTRUCTIONS: [u8; 2] = [RETURN, IRETURN];
-/// instructions which load a local, based on the bytecode
+/// instructions which load or store a local, based on the bytecode
 const LOAD_STORE_N_INSTRUCTIONS: [u8; 3] = [ILOAD, ALOAD, ASTORE];
 
 #[derive(Debug, Clone)]

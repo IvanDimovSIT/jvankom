@@ -138,7 +138,7 @@ mod tests {
         let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
         let result = jvm
             .run(
-                "TestSum".to_owned(),
+                "TestSimple".to_owned(),
                 "sum".to_owned(),
                 vec![JvmValue::Int(9), JvmValue::Int(10)],
             )
@@ -156,7 +156,7 @@ mod tests {
         let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
         let result = jvm
             .run(
-                "TestSum".to_owned(),
+                "TestSimple".to_owned(),
                 "arrayTest".to_owned(),
                 vec![JvmValue::Int(100), JvmValue::Int(0), JvmValue::Int(3)],
             )
@@ -170,11 +170,25 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
+    pub fn test_int_array_invalid_index() {
+        let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
+        let _result = jvm
+            .run(
+                "TestSimple".to_owned(),
+                "arrayTest".to_owned(),
+                vec![JvmValue::Int(100), JvmValue::Int(4), JvmValue::Int(3)],
+            )
+            .unwrap()
+            .unwrap();
+    }
+
+    #[test]
     pub fn test_constants() {
         let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
         let result = jvm
             .run(
-                "TestSum".to_owned(),
+                "TestSimple".to_owned(),
                 "constants".to_owned(),
                 vec![JvmValue::Int(100)],
             )
