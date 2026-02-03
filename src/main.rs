@@ -1,4 +1,8 @@
-use crate::{jvm::JVM, jvm_model::JvmValue};
+use crate::{
+    class_loader::{ClassLoader, ClassSource},
+    jvm::JVM,
+    jvm_model::JvmValue,
+};
 
 mod bytecode;
 mod class_file;
@@ -10,11 +14,15 @@ mod verifier;
 
 fn main() {
     let class =
-        verifier::verify_class_file(class_parser::parse("test_classes/TestSum.class").unwrap())
+        verifier::verify_class_file(class_parser::parse("test_classes/TestSimple.class").unwrap())
             .unwrap();
     println!("File:\n{class:?}");
 
-    let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
+    let class_loader = ClassLoader::new(vec![ClassSource::Jar(
+        "test_classes/simpleJar.jar".to_owned(),
+    )])
+    .unwrap();
+    let mut jvm = JVM::new(class_loader);
     let result = jvm
         .run(
             "TestSimple".to_owned(),

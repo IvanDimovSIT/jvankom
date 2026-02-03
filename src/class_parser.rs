@@ -38,7 +38,7 @@ impl UnverifiedClassFile {
 pub fn parse(class_file_path: &str) -> Result<UnverifiedClassFile, ClassParserError> {
     let bytes_result = std::fs::read(class_file_path);
     if let Ok(bytes) = bytes_result {
-        parse_from_bytes(bytes)
+        parse_from_bytes(&bytes)
     } else {
         Err(ClassParserError::ErrorReadingFile(
             bytes_result.unwrap_err().to_string(),
@@ -46,7 +46,7 @@ pub fn parse(class_file_path: &str) -> Result<UnverifiedClassFile, ClassParserEr
     }
 }
 
-pub fn parse_from_bytes(bytes: Vec<u8>) -> Result<UnverifiedClassFile, ClassParserError> {
+pub fn parse_from_bytes(bytes: &[u8]) -> Result<UnverifiedClassFile, ClassParserError> {
     if bytes.is_empty() {
         return Err(ClassParserError::EmptyFile);
     }
@@ -105,12 +105,12 @@ impl Error for ClassParserError {
     }
 }
 
-struct ClassParser {
-    bytes: Vec<u8>,
+struct ClassParser<'a> {
+    bytes: &'a [u8],
     index: usize,
 }
-impl ClassParser {
-    fn new(bytes: Vec<u8>) -> Self {
+impl<'a> ClassParser<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, index: 0 }
     }
 
@@ -806,21 +806,21 @@ mod tests {
 
     #[test]
     fn test_parse_unexpected_end_of_file() {
-        let result = parse_from_bytes(vec![0xCA, 0xFE, 0xBA, 0xBE, 0x0]);
+        let result = parse_from_bytes(&[0xCA, 0xFE, 0xBA, 0xBE, 0x0]);
         let error = result.unwrap_err();
         assert!(matches!(error, ClassParserError::UnexpectedEndOfFile));
     }
 
     #[test]
     fn test_parse_invalid_magic_number() {
-        let result = parse_from_bytes(vec![0xCA, 0xFE, 0x01, 0xBE, 0x0]);
+        let result = parse_from_bytes(&[0xCA, 0xFE, 0x01, 0xBE, 0x0]);
         let error = result.unwrap_err();
         assert!(matches!(error, ClassParserError::InvalidMagicNumber));
     }
 
     #[test]
     fn test_parse_empty_file() {
-        let result = parse_from_bytes(vec![]);
+        let result = parse_from_bytes(&[]);
         let error = result.unwrap_err();
         assert!(matches!(error, ClassParserError::EmptyFile));
     }
@@ -829,7 +829,7 @@ mod tests {
     fn test_parse_trailing_bytes() {
         let mut bytes = std::fs::read(TEST_CLASS_FILE_PATH).unwrap();
         bytes.push(0);
-        let result = parse_from_bytes(bytes);
+        let result = parse_from_bytes(&bytes);
         let error = result.unwrap_err();
         assert!(matches!(error, ClassParserError::ExpectedEndOfFile));
     }

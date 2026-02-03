@@ -10,9 +10,9 @@ pub struct JVM {
     heap: JvmHeap,
 }
 impl JVM {
-    pub fn new(contexts: Vec<String>) -> Self {
+    pub fn new(class_loader: ClassLoader) -> Self {
         Self {
-            class_loader: ClassLoader::new(contexts),
+            class_loader,
             threads: vec![],
             heap: JvmHeap::new(),
         }
@@ -131,11 +131,13 @@ impl JVM {
 
 #[cfg(test)]
 mod tests {
+    use crate::class_loader::ClassSource;
+
     use super::*;
 
     #[test]
-    pub fn test_sum() {
-        let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
+    fn test_sum() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
             .run(
                 "TestSimple".to_owned(),
@@ -152,8 +154,8 @@ mod tests {
     }
 
     #[test]
-    pub fn test_int_array_creation_and_indexing() {
-        let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
+    fn test_int_array_creation_and_indexing() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
             .run(
                 "TestSimple".to_owned(),
@@ -171,8 +173,8 @@ mod tests {
 
     #[test]
     #[should_panic]
-    pub fn test_int_array_invalid_index() {
-        let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
+    fn test_int_array_invalid_index() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let _result = jvm
             .run(
                 "TestSimple".to_owned(),
@@ -184,8 +186,8 @@ mod tests {
     }
 
     #[test]
-    pub fn test_constants() {
-        let mut jvm = JVM::new(vec!["test_classes".to_owned()]);
+    fn test_constants() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
             .run(
                 "TestSimple".to_owned(),
@@ -199,5 +201,29 @@ mod tests {
             JvmValue::Int(value) => assert_eq!(102, value),
             _ => panic!("expected int"),
         }
+    }
+
+    #[test]
+    fn test_single_jar() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/simpleJar.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "TestSimple".to_owned(),
+                "constants".to_owned(),
+                vec![JvmValue::Int(100)],
+            )
+            .unwrap()
+            .unwrap();
+        match result {
+            JvmValue::Int(x) => assert_eq!(102, x),
+            _ => panic!("Expected int result"),
+        }
+    }
+
+    fn create_jvm(contexts: Vec<ClassSource>) -> JVM {
+        let class_loader = ClassLoader::new(contexts).unwrap();
+        JVM::new(class_loader)
     }
 }

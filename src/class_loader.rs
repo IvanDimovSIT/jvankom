@@ -1,4 +1,13 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::Display,
+    fs::{self, File},
+    io::Read,
+    rc::Rc,
+};
+
+use zip::ZipArchive;
 
 use crate::{
     class_file::ClassFile,
@@ -7,22 +16,80 @@ use crate::{
     verifier,
 };
 
+#[derive(Debug, Clone)]
+pub enum ClassSource {
+    Directory(String),
+    Jar(String),
+}
+
 #[derive(Debug)]
 pub struct LoadedClass {
     pub class: Rc<ClassFile>,
     pub is_initialised: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct ClassLoaderError {
+    invalid_sources: Vec<ClassSource>,
+}
+impl Display for ClassLoaderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Invalid sources: {}",
+            self.invalid_sources
+                .iter()
+                .map(|s| format!("{s:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+impl Error for ClassLoaderError {}
+
 #[derive(Debug)]
 pub struct ClassLoader {
     loaded_classes: HashMap<String, Rc<ClassFile>>,
-    contexts: Vec<String>,
+    jars: Vec<ZipArchive<File>>,
+    directories: Vec<String>,
 }
 impl ClassLoader {
-    pub fn new(contexts: Vec<String>) -> Self {
-        Self {
-            loaded_classes: HashMap::new(),
-            contexts,
+    pub fn new(contexts: Vec<ClassSource>) -> Result<Self, ClassLoaderError> {
+        let mut directories = vec![];
+        let mut jars = vec![];
+        let mut invalid_sources = vec![];
+
+        for source in contexts {
+            match source {
+                ClassSource::Directory(path) => {
+                    if Self::check_directory_path(&path) {
+                        directories.push(path)
+                    } else {
+                        invalid_sources.push(ClassSource::Directory(path));
+                    }
+                }
+                ClassSource::Jar(path) => {
+                    if let Ok(f) = File::open(&path) {
+                        if let Ok(jar) = ZipArchive::new(f) {
+                            jars.push(jar);
+                        } else {
+                            invalid_sources.push(ClassSource::Jar(path));
+                        }
+                    } else {
+                        invalid_sources.push(ClassSource::Jar(path));
+                    }
+                }
+            }
+        }
+
+        if invalid_sources.is_empty() {
+            Ok(Self {
+                loaded_classes: HashMap::new(),
+                directories,
+                jars,
+            })
+        } else {
+            Err(ClassLoaderError { invalid_sources })
         }
     }
 
@@ -36,7 +103,7 @@ impl ClassLoader {
             return Ok(loaded_class);
         }
 
-        let class = Rc::new(self.find_class_file(class_name)?);
+        let class = self.find_class_file(class_name)?;
         self.loaded_classes
             .insert(class_name.to_owned(), class.clone());
         let loaded_class = LoadedClass {
@@ -47,38 +114,33 @@ impl ClassLoader {
         Ok(loaded_class)
     }
 
-    fn find_class_file(&self, class_name: &str) -> JvmResult<ClassFile> {
-        for path in &self.contexts {
-            let class_path = format!("{path}/{class_name}.class");
-            let class_result = class_parser::parse(&class_path);
-            match class_result {
-                Ok(class) => {
-                    return Self::verify(class, class_name);
-                }
-                Err(ClassParserError::ErrorReadingFile(_)) => {
+    fn find_class_file(&mut self, class_name: &str) -> JvmResult<Rc<ClassFile>> {
+        for jar in &mut self.jars {
+            if let Ok(mut file) = jar.by_name(&format!("{class_name}.class")) {
+                let mut data = Vec::with_capacity(1024);
+                if file.read_to_end(&mut data).is_err() {
                     continue;
                 }
-                Err(error) => {
-                    return Err(JvmError::ClassParserError {
-                        parsed_class: class_name.to_owned(),
-                        error,
-                    }
-                    .bx());
+                let class_result = class_parser::parse_from_bytes(&data);
+                if let Some(class_file) = Self::handle_parse_result(class_result, class_name)? {
+                    return Ok(class_file);
                 }
             }
         }
 
+        for path in &self.directories {
+            let class_path = format!("{path}/{class_name}.class");
+            let class_result = class_parser::parse(&class_path);
+            if let Some(class_file) = Self::handle_parse_result(class_result, class_name)? {
+                return Ok(class_file);
+            }
+        }
+
         let class_result = class_parser::parse(&format!("{class_name}.class"));
-        match class_result {
-            Ok(class) => Self::verify(class, class_name),
-            Err(ClassParserError::ErrorReadingFile(err)) => {
-                Err(JvmError::ClassLoaderError(format!("Cannot find '{class_name}':{err}")).bx())
-            }
-            Err(error) => Err(JvmError::ClassParserError {
-                parsed_class: class_name.to_owned(),
-                error,
-            }
-            .bx()),
+        if let Some(class_file) = Self::handle_parse_result(class_result, class_name)? {
+            Ok(class_file)
+        } else {
+            Err(JvmError::ClassLoaderError(format!("Cannot find '{class_name}'")).bx())
         }
     }
 
@@ -94,5 +156,24 @@ impl ClassLoader {
             }
             .bx()),
         }
+    }
+
+    fn handle_parse_result(
+        class_result: Result<UnverifiedClassFile, ClassParserError>,
+        class_name: &str,
+    ) -> JvmResult<Option<Rc<ClassFile>>> {
+        match class_result {
+            Ok(class) => Self::verify(class, class_name).map(|c| Option::Some(Rc::new(c))),
+            Err(ClassParserError::ErrorReadingFile(_)) => Ok(None),
+            Err(error) => Err(JvmError::ClassParserError {
+                parsed_class: class_name.to_owned(),
+                error,
+            }
+            .bx()),
+        }
+    }
+
+    fn check_directory_path(path: &str) -> bool {
+        fs::metadata(path).is_ok()
     }
 }
