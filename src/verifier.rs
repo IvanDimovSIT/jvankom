@@ -1,7 +1,7 @@
 use std::{error::Error, fmt::Display};
 
 use crate::{
-    bytecode::{ALOAD, ASTORE, ILOAD, IRETURN, RETURN},
+    bytecode::{ALOAD, ASTORE, ILOAD, INVOKESTATIC, IRETURN, RETURN},
     class_file::{Attribute, Bytecode, ClassFile, Method},
     class_parser::UnverifiedClassFile,
 };
@@ -43,6 +43,7 @@ pub fn verify_class_file(
     let class = unverified_class_file.mark_verified();
     verify_returns(&class)?;
     verify_load_and_stores(&class)?;
+    verify_method_calls(&class)?;
     Ok(class)
 }
 
@@ -107,6 +108,26 @@ fn verify_load_store_bytecode(bytecode: &Bytecode) -> Result<(), VerifierError> 
         }
     }
 
+    Ok(())
+}
+
+fn verify_method_calls(class: &ClassFile) -> Result<(), VerifierError> {
+    for method in &class.methods {
+        for atr in &method.attributes {
+            match atr {
+                Attribute::Code(bytecode) => {
+                    verify_method_call(class, bytecode)?;
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn verify_method_call(_class: &ClassFile, _bytecode: &Bytecode) -> Result<(), VerifierError> {
+    //TODO: Verify method call
     Ok(())
 }
 

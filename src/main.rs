@@ -13,21 +13,20 @@ mod jvm_model;
 mod verifier;
 
 fn main() {
-    let class =
-        verifier::verify_class_file(class_parser::parse("test_classes/TestSimple.class").unwrap())
-            .unwrap();
+    let class = verifier::verify_class_file(
+        class_parser::parse("test_classes/TestMethodCall.class").unwrap(),
+    )
+    .unwrap();
     println!("File:\n{class:?}");
 
-    let class_loader = ClassLoader::new(vec![ClassSource::Jar(
-        "test_classes/simpleJar.jar".to_owned(),
-    )])
-    .unwrap();
+    let class_loader =
+        ClassLoader::new(vec![ClassSource::Directory("test_classes".to_owned())]).unwrap();
     let mut jvm = JVM::new(class_loader);
     let result = jvm
         .run(
-            "TestSimple".to_owned(),
-            "constants".to_owned(),
-            vec![JvmValue::Int(100)],
+            "TestMethodCall".to_owned(),
+            "mainCall".to_owned(),
+            vec![JvmValue::Int(1000), JvmValue::Int(100)],
         )
         .unwrap()
         .unwrap();

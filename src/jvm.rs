@@ -222,6 +222,32 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_single_class_static_method_calls() {
+        test_single_class_static_method_calls_helper(100, 1000, 104);
+        test_single_class_static_method_calls_helper(1000, 100, 1004);
+    }
+
+    fn test_single_class_static_method_calls_helper(
+        param1: i32,
+        param2: i32,
+        expected_result: i32,
+    ) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "TestMethodCall".to_owned(),
+                "mainCall".to_owned(),
+                vec![JvmValue::Int(param1), JvmValue::Int(param2)],
+            )
+            .unwrap()
+            .unwrap();
+        match result {
+            JvmValue::Int(x) => assert_eq!(expected_result, x),
+            _ => panic!("Expected int result"),
+        }
+    }
+
     fn create_jvm(contexts: Vec<ClassSource>) -> JVM {
         let class_loader = ClassLoader::new(contexts).unwrap();
         JVM::new(class_loader)

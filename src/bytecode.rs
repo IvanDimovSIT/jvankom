@@ -1,6 +1,7 @@
 use std::num::NonZeroUsize;
 
 use crate::{
+    bytecode::stack_instructions::pop_instruction,
     class_loader::ClassLoader,
     jvm_model::{
         HeapObject, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmType, JvmValue,
@@ -18,7 +19,9 @@ mod constants_instructions;
 mod control_instructions;
 mod load_instructions;
 mod math_instructions;
+mod method_descriptor_parser;
 mod references_instructions;
+mod stack_instructions;
 mod store_instructions;
 
 // From https://docs.oracle.com/javase/specs/jvms/se7/html/jvms-7.html
@@ -42,14 +45,16 @@ pub const ALOAD_2: u8 = 0x2c;
 pub const ALOAD_3: u8 = 0x2d;
 pub const IALOAD: u8 = 0x2e;
 pub const ASTORE: u8 = 0x3a;
-pub const IADD: u8 = 0x60;
 pub const ASTORE_0: u8 = 0x4b;
 pub const ASTORE_1: u8 = 0x4c;
 pub const ASTORE_2: u8 = 0x4d;
 pub const ASTORE_3: u8 = 0x4e;
 pub const IASTORE: u8 = 0x4f;
+pub const POP: u8 = 0x57;
+pub const IADD: u8 = 0x60;
 pub const IRETURN: u8 = 0xac;
 pub const RETURN: u8 = 0xb1;
+pub const INVOKESTATIC: u8 = 0xb8;
 pub const NEWARRAY: u8 = 0xbc;
 
 type BytecodeInstruction = fn(&mut JvmThread, &mut JvmHeap, &mut ClassLoader) -> JvmResult<()>;
@@ -89,8 +94,10 @@ impl BytecodeTable {
             (ASTORE_2, store_reference_instruction::<2>),
             (ASTORE_3, store_reference_instruction::<3>),
             (IASTORE, store_integer_array_instruction),
+            (POP, pop_instruction),
             (IRETURN, integer_return_instruction),
             (RETURN, return_instruction),
+            (INVOKESTATIC, invoke_static_instruction),
             (NEWARRAY, new_array_instruction),
         ];
 
@@ -138,6 +145,15 @@ fn handle_unrecognised_instruction(
 }
 
 #[inline]
+fn pop_long(frame: &mut JvmStackFrame) -> JvmResult<i64> {
+    if let Some(a) = frame.operand_stack.pop() {
+        expect_long(a)
+    } else {
+        Err(JvmError::NoOperandFound.bx())
+    }
+}
+
+#[inline]
 fn pop_int(frame: &mut JvmStackFrame) -> JvmResult<i32> {
     if let Some(a) = frame.operand_stack.pop() {
         expect_int(a)
@@ -173,6 +189,18 @@ fn expect_int(value: JvmValue) -> JvmResult<i32> {
         JvmValue::Int(v) => Ok(v),
         _ => Err(JvmError::TypeError {
             expected: JvmType::Int,
+            found: value.get_type(),
+        }
+        .bx()),
+    }
+}
+
+#[inline]
+fn expect_long(value: JvmValue) -> JvmResult<i64> {
+    match value {
+        JvmValue::Long(v) => Ok(v),
+        _ => Err(JvmError::TypeError {
+            expected: JvmType::Long,
             found: value.get_type(),
         }
         .bx()),

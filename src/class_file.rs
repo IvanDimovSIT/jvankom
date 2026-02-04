@@ -235,6 +235,42 @@ impl ConstantPool {
         }
     }
 
+    /// returns the class, method name and method descriptor based on method ref index
+    pub fn get_class_methodname_descriptor(
+        &self,
+        method_ref_index: NonZeroUsize,
+    ) -> Option<(&str, &str, &str)> {
+        let (class_i, name_and_type_i) = self.get_method_ref(method_ref_index)?;
+        let class = self.get_class_name(class_i)?;
+        let (method_name, method_descriptor) = self.get_name_and_type(name_and_type_i)?;
+        Some((class, method_name, method_descriptor))
+    }
+
+    pub fn get_method_ref(&self, index: NonZeroUsize) -> Option<(NonZeroUsize, NonZeroUsize)> {
+        match self.get(index) {
+            ConstantValue::MethodRef {
+                class_index,
+                name_and_type_index,
+            } => Some((*class_index, *name_and_type_index)),
+            _ => None,
+        }
+    }
+
+    /// returns (name, descriptor)
+    pub fn get_name_and_type(&self, name_and_type_index: NonZeroUsize) -> Option<(&str, &str)> {
+        match self.get(name_and_type_index) {
+            ConstantValue::NameAndType {
+                name_index,
+                descriptor_index,
+            } => {
+                let name = self.get_utf8(*name_index)?;
+                let descriptor = self.get_utf8(*descriptor_index)?;
+                Some((name, descriptor))
+            }
+            _ => None,
+        }
+    }
+
     pub fn get_class_name(&self, class_index: NonZeroUsize) -> Option<&str> {
         let class = self.get(class_index);
         let name_index = match class {

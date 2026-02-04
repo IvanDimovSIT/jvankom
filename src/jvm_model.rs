@@ -1,4 +1,10 @@
-use std::{collections::HashMap, error::Error, fmt::Display, num::NonZeroUsize, rc::Rc};
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt::{Display, format},
+    num::NonZeroUsize,
+    rc::Rc,
+};
 
 use crate::{class_file::ClassFile, class_parser::ClassParserError, verifier::VerifierError};
 
@@ -54,6 +60,7 @@ pub enum JvmError {
         error: VerifierError,
     },
     IncompatibleArrayType,
+    InvalidMethodDescriptor(String),
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -100,6 +107,9 @@ impl Display for JvmError {
             JvmError::InvalidArrayType(array_type) => format!("Invalid array type '{array_type}'"),
             JvmError::InvalidReference => "Reference points to invalid memory".to_owned(),
             JvmError::IncompatibleArrayType => "Incompatible array type".to_owned(),
+            JvmError::InvalidMethodDescriptor(desc) => {
+                format!("Invalid method descriptor: '{desc}'")
+            }
         };
 
         f.write_str(&description)
