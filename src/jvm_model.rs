@@ -6,7 +6,10 @@ use std::{
     rc::Rc,
 };
 
-use crate::{class_file::ClassFile, class_parser::ClassParserError, verifier::VerifierError};
+use crate::{
+    class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
+    verifier::VerifierError,
+};
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
 
@@ -61,6 +64,8 @@ pub enum JvmError {
     },
     IncompatibleArrayType,
     InvalidMethodDescriptor(String),
+    InvalidConstantPoolIndex,
+    InvalidMethodRefIndex(NonZeroUsize),
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -110,6 +115,10 @@ impl Display for JvmError {
             JvmError::InvalidMethodDescriptor(desc) => {
                 format!("Invalid method descriptor: '{desc}'")
             }
+            JvmError::InvalidMethodRefIndex(index) => {
+                format!("Invalid method ref index: '{index}'")
+            }
+            JvmError::InvalidConstantPoolIndex => "Invalid constant pool index'".to_owned(),
         };
 
         f.write_str(&description)
@@ -270,4 +279,11 @@ impl JvmThread {
     pub fn peek(&mut self) -> Option<&mut JvmStackFrame> {
         self.stack.last_mut()
     }
+}
+
+#[derive(Debug)]
+pub struct JvmContext<'a> {
+    pub class_loader: &'a mut ClassLoader,
+    pub current_thread: &'a mut JvmThread,
+    pub heap: &'a mut JvmHeap,
 }

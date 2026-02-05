@@ -219,6 +219,10 @@ impl ConstantPool {
         }
     }
 
+    pub fn get_all_constants(&self) -> &[ConstantValue] {
+        &self.constant_pool_table
+    }
+
     pub fn len(&self) -> usize {
         self.constant_pool_table.len()
     }
@@ -344,9 +348,15 @@ impl ClassFile {
         self.constant_pool.get_class_name(self.super_class_index?)
     }
 
-    pub fn get_method_and_bytecode_index(&self, method_name: &str) -> Option<(usize, usize)> {
+    pub fn get_method_and_bytecode_index(
+        &self,
+        method_name: &str,
+        descriptor: &str,
+    ) -> Option<(usize, usize)> {
         for (index, method) in self.methods.iter().enumerate() {
-            if self.constant_pool.get_utf8(method.name_index)? == method_name {
+            let methods_match = self.constant_pool.get_utf8(method.name_index)? == method_name
+                && self.constant_pool.get_utf8(method.descriptor_index)? == descriptor;
+            if methods_match {
                 let (bytecode_index, _) = method
                     .attributes
                     .iter()

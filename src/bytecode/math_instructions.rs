@@ -1,11 +1,7 @@
 use super::*;
 
-pub fn integer_add(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
+pub fn integer_add(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
 
     let value_b = pop_int(frame)?;
     let value_a = pop_int(frame)?;

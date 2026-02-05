@@ -1,11 +1,7 @@
 use super::*;
 
-pub fn integer_load_n(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
+pub fn integer_load_n(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
     let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     let index_value = bytecode.code[frame.program_counter] as usize;
     frame.program_counter += 1;
@@ -20,12 +16,8 @@ pub fn integer_load_n(
     Ok(())
 }
 
-pub fn integer_load<const INDEX: usize>(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
+pub fn integer_load<const INDEX: usize>(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
 
     if let Some(value) = frame.local_variables.get(INDEX) {
         expect_int(*value)?;
@@ -37,12 +29,8 @@ pub fn integer_load<const INDEX: usize>(
     Ok(())
 }
 
-pub fn reference_load_instruction<const INDEX: usize>(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
+pub fn reference_load_instruction<const INDEX: usize>(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
 
     if let Some(value) = frame.local_variables.get(INDEX) {
         expect_reference(*value)?;
@@ -54,12 +42,8 @@ pub fn reference_load_instruction<const INDEX: usize>(
     Ok(())
 }
 
-pub fn reference_load_n(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
+pub fn reference_load_n(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
     let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     let index_value = bytecode.code[frame.program_counter] as usize;
     frame.program_counter += 1;
@@ -74,12 +58,8 @@ pub fn reference_load_n(
     Ok(())
 }
 
-pub fn load_integer_array_instruction(
-    thread: &mut JvmThread,
-    heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
+pub fn load_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
 
     let index = pop_int(frame)?;
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
@@ -88,7 +68,7 @@ pub fn load_integer_array_instruction(
         todo!("Throw NullPointerException");
     };
 
-    let array = if let Some(array) = heap.get(array_ref) {
+    let array = if let Some(array) = context.heap.get(array_ref) {
         match array {
             HeapObject::IntArray(items) => items,
             _ => return Err(JvmError::IncompatibleArrayType.bx()),

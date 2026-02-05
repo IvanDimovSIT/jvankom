@@ -26,6 +26,7 @@ fn main() {
         .run(
             "TestMethodCall".to_owned(),
             "mainCall".to_owned(),
+            "(II)I".to_owned(),
             vec![JvmValue::Int(1000), JvmValue::Int(100)],
         )
         .unwrap()

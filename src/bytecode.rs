@@ -4,7 +4,8 @@ use crate::{
     bytecode::stack_instructions::pop_instruction,
     class_loader::ClassLoader,
     jvm_model::{
-        HeapObject, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmType, JvmValue,
+        HeapObject, JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmType,
+        JvmValue,
     },
 };
 
@@ -57,7 +58,7 @@ pub const RETURN: u8 = 0xb1;
 pub const INVOKESTATIC: u8 = 0xb8;
 pub const NEWARRAY: u8 = 0xbc;
 
-type BytecodeInstruction = fn(&mut JvmThread, &mut JvmHeap, &mut ClassLoader) -> JvmResult<()>;
+type BytecodeInstruction = fn(JvmContext) -> JvmResult<()>;
 
 pub const BYTECODE_TABLE: BytecodeTable = BytecodeTable::new();
 
@@ -112,25 +113,15 @@ impl BytecodeTable {
         Self { table }
     }
 
-    pub fn execute_instruction(
-        &self,
-        instruction: u8,
-        thread: &mut JvmThread,
-        heap: &mut JvmHeap,
-        class_loader: &mut ClassLoader,
-    ) -> JvmResult<()> {
+    pub fn execute_instruction(&self, instruction: u8, jvm_context: JvmContext) -> JvmResult<()> {
         let table_index = instruction as usize;
         let handler = self.table[table_index];
-        handler(thread, heap, class_loader)
+        handler(jvm_context)
     }
 }
 
-fn handle_unrecognised_instruction(
-    thread: &mut JvmThread,
-    _heap: &mut JvmHeap,
-    _class_loader: &mut ClassLoader,
-) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
+fn handle_unrecognised_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
     let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     assert!(frame.program_counter > 0);
     let previous_index = frame.program_counter.saturating_sub(1);

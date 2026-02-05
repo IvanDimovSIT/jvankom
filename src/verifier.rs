@@ -1,8 +1,8 @@
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
 use crate::{
     bytecode::{ALOAD, ASTORE, ILOAD, INVOKESTATIC, IRETURN, RETURN},
-    class_file::{Attribute, Bytecode, ClassFile, Method},
+    class_file::{Attribute, Bytecode, ClassFile, ConstantValue, Method},
     class_parser::UnverifiedClassFile,
 };
 
@@ -15,6 +15,8 @@ pub enum VerifierError {
     MissingMethodDescriptor,
     MissingReturnFromMethod,
     InvalidIndexingInstruction,
+    InvalidNameConstantIndex,
+    InvalidNameAndTypeIndex,
 }
 impl Display for VerifierError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -22,6 +24,8 @@ impl Display for VerifierError {
             VerifierError::MissingMethodDescriptor => "Missing method descriptor",
             VerifierError::MissingReturnFromMethod => "Missing return instruction from method",
             VerifierError::InvalidIndexingInstruction => "Invalid load instruction",
+            VerifierError::InvalidNameConstantIndex => "Invalid name constant index",
+            VerifierError::InvalidNameAndTypeIndex => "Invalid name and type index",
         };
 
         f.write_str(desc)
@@ -43,7 +47,7 @@ pub fn verify_class_file(
     let class = unverified_class_file.mark_verified();
     verify_returns(&class)?;
     verify_load_and_stores(&class)?;
-    verify_method_calls(&class)?;
+    verify_constant_pool(&class)?;
     Ok(class)
 }
 
@@ -111,23 +115,35 @@ fn verify_load_store_bytecode(bytecode: &Bytecode) -> Result<(), VerifierError> 
     Ok(())
 }
 
-fn verify_method_calls(class: &ClassFile) -> Result<(), VerifierError> {
-    for method in &class.methods {
-        for atr in &method.attributes {
-            match atr {
-                Attribute::Code(bytecode) => {
-                    verify_method_call(class, bytecode)?;
-                }
-                _ => continue,
-            }
+fn verify_constant_pool(class: &ClassFile) -> Result<(), VerifierError> {
+    for const_value in class.constant_pool.get_all_constants() {
+        match *const_value {
+            ConstantValue::MethodRef {
+                class_index,
+                name_and_type_index,
+            } => verify_method_ref_constant(class, class_index, name_and_type_index)?,
+            _ => {}
         }
     }
 
     Ok(())
 }
 
-fn verify_method_call(_class: &ClassFile, _bytecode: &Bytecode) -> Result<(), VerifierError> {
-    //TODO: Verify method call
+fn verify_method_ref_constant(
+    class: &ClassFile,
+    class_index: NonZeroUsize,
+    name_and_type_index: NonZeroUsize,
+) -> Result<(), VerifierError> {
+    let class_name = class.constant_pool.get_class_name(class_index);
+    if class_name.is_none() {
+        return Err(VerifierError::InvalidNameConstantIndex);
+    }
+
+    let name_and_type = class.constant_pool.get_name_and_type(name_and_type_index);
+    if name_and_type.is_none() {
+        return Err(VerifierError::InvalidNameAndTypeIndex);
+    }
+
     Ok(())
 }
 

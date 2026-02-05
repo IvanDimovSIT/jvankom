@@ -1,7 +1,7 @@
 use crate::{
     bytecode::BYTECODE_TABLE,
     class_loader::{ClassLoader, LoadedClass},
-    jvm_model::{JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmValue},
+    jvm_model::{JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmValue},
 };
 
 pub struct JVM {
@@ -20,13 +20,14 @@ impl JVM {
 
     pub fn initialise_class(thread: &mut JvmThread, loaded_class: &LoadedClass) -> JvmResult<()> {
         const INITIALISE_CLASS_METHOD: &str = "<clinit>";
+        const INITIALISE_CLASS_DESCIPTOR: &str = "()V";
         if loaded_class.is_initialised {
             return Ok(());
         }
 
         let (method_index, bytecode_index) = if let Some((m_index, b_index)) = loaded_class
             .class
-            .get_method_and_bytecode_index(INITIALISE_CLASS_METHOD)
+            .get_method_and_bytecode_index(INITIALISE_CLASS_METHOD, INITIALISE_CLASS_DESCIPTOR)
         {
             (m_index, b_index)
         } else {
@@ -47,13 +48,14 @@ impl JVM {
         &mut self,
         class_name: String,
         method_name: String,
+        method_descriptor: String,
         params: Vec<JvmValue>,
     ) -> JvmResult<Option<JvmValue>> {
         let loaded_class = self.class_loader.get(&class_name)?;
 
         let (method_index, bytecode_index) = if let Some(index) = loaded_class
             .class
-            .get_method_and_bytecode_index(&method_name)
+            .get_method_and_bytecode_index(&method_name, &method_descriptor)
         {
             index
         } else {
@@ -119,9 +121,11 @@ impl JVM {
 
             BYTECODE_TABLE.execute_instruction(
                 instruction,
-                current_thread,
-                &mut self.heap,
-                &mut self.class_loader,
+                JvmContext {
+                    current_thread,
+                    heap: &mut self.heap,
+                    class_loader: &mut self.class_loader,
+                },
             )?;
         }
 
@@ -142,6 +146,7 @@ mod tests {
             .run(
                 "TestSimple".to_owned(),
                 "sum".to_owned(),
+                "(II)I".to_owned(),
                 vec![JvmValue::Int(9), JvmValue::Int(10)],
             )
             .unwrap()
@@ -160,6 +165,7 @@ mod tests {
             .run(
                 "TestSimple".to_owned(),
                 "arrayTest".to_owned(),
+                "(III)I".to_owned(),
                 vec![JvmValue::Int(100), JvmValue::Int(0), JvmValue::Int(3)],
             )
             .unwrap()
@@ -179,6 +185,7 @@ mod tests {
             .run(
                 "TestSimple".to_owned(),
                 "arrayTest".to_owned(),
+                "(III)I".to_owned(),
                 vec![JvmValue::Int(100), JvmValue::Int(4), JvmValue::Int(3)],
             )
             .unwrap()
@@ -192,6 +199,7 @@ mod tests {
             .run(
                 "TestSimple".to_owned(),
                 "constants".to_owned(),
+                "(I)I".to_owned(),
                 vec![JvmValue::Int(100)],
             )
             .unwrap()
@@ -212,6 +220,7 @@ mod tests {
             .run(
                 "TestSimple".to_owned(),
                 "constants".to_owned(),
+                "(I)I".to_owned(),
                 vec![JvmValue::Int(100)],
             )
             .unwrap()
@@ -238,6 +247,7 @@ mod tests {
             .run(
                 "TestMethodCall".to_owned(),
                 "mainCall".to_owned(),
+                "(II)I".to_owned(),
                 vec![JvmValue::Int(param1), JvmValue::Int(param2)],
             )
             .unwrap()
