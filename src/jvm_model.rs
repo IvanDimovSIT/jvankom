@@ -8,10 +8,22 @@ use std::{
 
 use crate::{
     class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
-    verifier::VerifierError,
+    method_call_cache::MethodCallCache, verifier::VerifierError,
 };
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ParameterCallType {
+    Integer,
+    Long,
+    Reference,
+    Short,
+    Character,
+    Byte,
+    Float,
+    Double,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum JvmType {
@@ -286,4 +298,5 @@ pub struct JvmContext<'a> {
     pub class_loader: &'a mut ClassLoader,
     pub current_thread: &'a mut JvmThread,
     pub heap: &'a mut JvmHeap,
+    pub method_call_cache: &'a mut MethodCallCache,
 }

@@ -1,12 +1,9 @@
 use crate::{
     bytecode::{pop_int, pop_long, pop_reference},
-    jvm_model::{JvmError, JvmResult, JvmStackFrame, JvmValue},
+    jvm_model::{JvmError, JvmResult, JvmStackFrame, JvmValue, ParameterCallType},
 };
 
-pub fn prepare_method_parameters(
-    frame: &mut JvmStackFrame,
-    method_descriptor: &str,
-) -> JvmResult<Vec<JvmValue>> {
+pub fn parse_descriptor(method_descriptor: &str) -> JvmResult<Vec<ParameterCallType>> {
     let param_list_start = if let Some(start) = method_descriptor.find('(') {
         start + 1
     } else {
@@ -19,13 +16,7 @@ pub fn prepare_method_parameters(
     };
     let params_desc = &method_descriptor[param_list_start..param_list_end];
 
-    pop_params(params_desc, frame)
-}
-
-fn pop_params(params_desc: &str, frame: &mut JvmStackFrame) -> JvmResult<Vec<JvmValue>> {
-    let mut params = Vec::with_capacity(4);
     let mut types = Vec::with_capacity(4);
-
     let mut in_ref = false;
     for param_desc in params_desc.chars() {
         if in_ref {
@@ -34,10 +25,10 @@ fn pop_params(params_desc: &str, frame: &mut JvmStackFrame) -> JvmResult<Vec<Jvm
             }
         } else {
             match param_desc {
-                'I' => types.push('I'),
-                'J' => types.push('J'),
+                'I' => types.push(ParameterCallType::Integer),
+                'J' => types.push(ParameterCallType::Long),
                 _ => {
-                    types.push('L');
+                    types.push(ParameterCallType::Reference);
                     debug_assert!(['[', 'L'].contains(&param_desc));
                     debug_assert_ne!(';', param_desc);
                     in_ref = true;
@@ -46,16 +37,29 @@ fn pop_params(params_desc: &str, frame: &mut JvmStackFrame) -> JvmResult<Vec<Jvm
         }
     }
 
-    for t in types.iter().rev() {
-        match t {
-            'I' => params.insert(0, JvmValue::Int(pop_int(frame)?)),
-            'J' => {
+    types.reverse();
+
+    Ok(types)
+}
+
+/// types need to be in pop order (reversed)
+pub fn pop_params(
+    types: &[ParameterCallType],
+    frame: &mut JvmStackFrame,
+) -> JvmResult<Vec<JvmValue>> {
+    let mut params = Vec::with_capacity(4);
+
+    for t in types {
+        match *t {
+            ParameterCallType::Integer => params.insert(0, JvmValue::Int(pop_int(frame)?)),
+            ParameterCallType::Long => {
                 params.insert(0, JvmValue::Unusable);
                 params.insert(0, JvmValue::Long(pop_long(frame)?));
             }
-            _ => {
+            ParameterCallType::Reference => {
                 params.insert(0, JvmValue::Reference(pop_reference(frame)?));
             }
+            _ => unimplemented!(),
         };
     }
 

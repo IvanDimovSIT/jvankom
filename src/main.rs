@@ -10,11 +10,12 @@ mod class_loader;
 mod class_parser;
 mod jvm;
 mod jvm_model;
+mod method_call_cache;
 mod verifier;
 
 fn main() {
     let class = verifier::verify_class_file(
-        class_parser::parse("test_classes/TestMethodCall.class").unwrap(),
+        class_parser::parse("test_classes/TestStaticMethodCallCache.class").unwrap(),
     )
     .unwrap();
     println!("File:\n{class:?}");
@@ -24,7 +25,7 @@ fn main() {
     let mut jvm = JVM::new(class_loader);
     let result = jvm
         .run(
-            "TestMethodCall".to_owned(),
+            "TestStaticMethodCallCache".to_owned(),
             "mainCall".to_owned(),
             "(II)I".to_owned(),
             vec![JvmValue::Int(1000), JvmValue::Int(100)],

@@ -2,12 +2,14 @@ use crate::{
     bytecode::BYTECODE_TABLE,
     class_loader::{ClassLoader, LoadedClass},
     jvm_model::{JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmValue},
+    method_call_cache::MethodCallCache,
 };
 
 pub struct JVM {
     class_loader: ClassLoader,
     threads: Vec<JvmThread>,
     heap: JvmHeap,
+    method_call_cache: MethodCallCache,
 }
 impl JVM {
     pub fn new(class_loader: ClassLoader) -> Self {
@@ -15,6 +17,7 @@ impl JVM {
             class_loader,
             threads: vec![],
             heap: JvmHeap::new(),
+            method_call_cache: MethodCallCache::new(),
         }
     }
 
@@ -125,6 +128,7 @@ impl JVM {
                     current_thread,
                     heap: &mut self.heap,
                     class_loader: &mut self.class_loader,
+                    method_call_cache: &mut self.method_call_cache,
                 },
             )?;
         }
@@ -235,6 +239,27 @@ mod tests {
     fn test_single_class_static_method_calls() {
         test_single_class_static_method_calls_helper(100, 1000, 104);
         test_single_class_static_method_calls_helper(1000, 100, 1004);
+    }
+
+    #[test]
+    fn test_method_caching() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "TestStaticMethodCallCache".to_owned(),
+                "mainCall".to_owned(),
+                "(II)I".to_owned(),
+                vec![JvmValue::Int(1000), JvmValue::Int(100)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(value) => assert_eq!(2100, value),
+            _ => panic!("expected int"),
+        }
+
+        assert_eq!(2, jvm.method_call_cache.get_cache_hits());
     }
 
     fn test_single_class_static_method_calls_helper(
