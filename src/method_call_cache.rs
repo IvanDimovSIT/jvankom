@@ -22,7 +22,6 @@ impl StaticMethodCallKey {
 struct StaticMethodInfoKey {
     class_ptr: usize,
     method_index: usize,
-    /// list of types in stack pop order (reversed)
     parameter_list: Vec<ParameterCallType>,
 }
 impl From<StaticMethodCallInfo> for StaticMethodInfoKey {
@@ -40,6 +39,7 @@ pub struct StaticMethodCallInfo {
     pub class: Rc<ClassFile>,
     pub method_index: usize,
     pub bytecode_index: usize,
+    /// list of types in stack pop order (reversed)
     pub parameter_list: Vec<ParameterCallType>,
 }
 

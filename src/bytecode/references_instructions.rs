@@ -1,5 +1,8 @@
+use std::rc::Rc;
+
 use crate::{
     bytecode::method_descriptor_parser::{parse_descriptor, pop_params},
+    class_file::MethodAccessFlags,
     jvm::JVM,
     method_call_cache::StaticMethodCallInfo,
 };
@@ -46,6 +49,7 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
     let index_byte2 = bytecode.code[frame.program_counter] as u16;
     frame.program_counter += 1;
 
+    // check cache
     let unvalidated_cp_index = (index_byte1 << 8) | index_byte2;
     if let Some(call_info) = context
         .method_call_cache
@@ -64,6 +68,8 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
         return Ok(());
     };
 
+    // cache miss: resolve method
+    // find and load class
     let cp_index = if let Some(index) = NonZeroUsize::new(unvalidated_cp_index as usize) {
         index
     } else {
@@ -93,14 +99,30 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
         .bx());
     };
 
+    // check access
+    let called_method = &loaded_class.class.methods[called_method_index];
+    if !called_method
+        .access_flags
+        .check_flag(MethodAccessFlags::STATIC_FLAG)
+    {
+        todo!("Throw IncopatibleClassChangeError")
+    }
+    if called_method
+        .access_flags
+        .check_flag(MethodAccessFlags::PRIVATE_FLAG)
+        && Rc::as_ptr(&loaded_class.class) != Rc::as_ptr(&frame.class)
+    {
+        todo!("Throw IllegalAccessError")
+    }
+
+    // register method in cache
     let param_types = parse_descriptor(method_descriptor)?;
-    let params = pop_params(&param_types, frame)?;
 
     let static_method_call_info = StaticMethodCallInfo {
         class: loaded_class.class.clone(),
         method_index: called_method_index,
         bytecode_index: called_bytecode_index,
-        parameter_list: param_types,
+        parameter_list: param_types.clone(),
     };
 
     context.method_call_cache.register_static_call_info(
@@ -108,6 +130,22 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
         unvalidated_cp_index,
         &frame.class,
     );
+
+    // initialise class and rewind
+    if !loaded_class.is_initialised {
+        frame.program_counter -= 3;
+        JVM::initialise_class(
+            context.current_thread,
+            &loaded_class,
+            context.class_loader,
+            class_name,
+        )?;
+
+        return Ok(());
+    }
+
+    // call resolved method
+    let params = pop_params(&param_types, frame)?;
 
     let new_frame = JvmStackFrame::new(
         loaded_class.class.clone(),
@@ -117,7 +155,6 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
     );
 
     context.current_thread.push(new_frame);
-    JVM::initialise_class(context.current_thread, &loaded_class)?;
 
     Ok(())
 }

@@ -21,7 +21,12 @@ impl JVM {
         }
     }
 
-    pub fn initialise_class(thread: &mut JvmThread, loaded_class: &LoadedClass) -> JvmResult<()> {
+    pub fn initialise_class(
+        thread: &mut JvmThread,
+        loaded_class: &LoadedClass,
+        class_loader: &mut ClassLoader,
+        class_name: &str,
+    ) -> JvmResult<()> {
         const INITIALISE_CLASS_METHOD: &str = "<clinit>";
         const INITIALISE_CLASS_DESCIPTOR: &str = "()V";
         if loaded_class.is_initialised {
@@ -43,6 +48,7 @@ impl JVM {
             bytecode_index,
             vec![],
         ));
+        class_loader.mark_as_loaded(class_name);
 
         Ok(())
     }
@@ -77,7 +83,12 @@ impl JVM {
             params,
         );
         thread.push(stack_frame);
-        Self::initialise_class(&mut thread, &loaded_class)?;
+        Self::initialise_class(
+            &mut thread,
+            &loaded_class,
+            &mut self.class_loader,
+            &class_name,
+        )?;
         self.threads.push(thread);
 
         self.run_thread()
@@ -259,7 +270,7 @@ mod tests {
             _ => panic!("expected int"),
         }
 
-        assert_eq!(2, jvm.method_call_cache.get_cache_hits());
+        assert_eq!(3, jvm.method_call_cache.get_cache_hits());
     }
 
     fn test_single_class_static_method_calls_helper(
@@ -281,6 +292,7 @@ mod tests {
             JvmValue::Int(x) => assert_eq!(expected_result, x),
             _ => panic!("Expected int result"),
         }
+        assert_eq!(3, jvm.method_call_cache.get_cache_hits());
     }
 
     fn create_jvm(contexts: Vec<ClassSource>) -> JVM {

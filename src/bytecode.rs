@@ -2,11 +2,7 @@ use std::num::NonZeroUsize;
 
 use crate::{
     bytecode::stack_instructions::pop_instruction,
-    class_loader::ClassLoader,
-    jvm_model::{
-        HeapObject, JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmType,
-        JvmValue,
-    },
+    jvm_model::{HeapObject, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmType, JvmValue},
 };
 
 use constants_instructions::*;

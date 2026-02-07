@@ -22,7 +22,7 @@ pub enum ClassSource {
     Jar(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LoadedClass {
     pub class: Rc<ClassFile>,
     pub is_initialised: bool,
@@ -49,7 +49,7 @@ impl Error for ClassLoaderError {}
 
 #[derive(Debug)]
 pub struct ClassLoader {
-    loaded_classes: HashMap<String, Rc<ClassFile>>,
+    loaded_classes: HashMap<String, LoadedClass>,
     jars: Vec<ZipArchive<File>>,
     directories: Vec<String>,
 }
@@ -96,22 +96,27 @@ impl ClassLoader {
     pub fn get(&mut self, class_name: &str) -> JvmResult<LoadedClass> {
         let initialised_class = self.loaded_classes.get(class_name);
         if let Some(class) = initialised_class {
-            let loaded_class = LoadedClass {
-                class: class.clone(),
-                is_initialised: true,
-            };
-            return Ok(loaded_class);
+            return Ok(class.clone());
         }
 
         let class = self.find_class_file(class_name)?;
-        self.loaded_classes
-            .insert(class_name.to_owned(), class.clone());
         let loaded_class = LoadedClass {
-            class: class.clone(),
+            class,
             is_initialised: false,
         };
+        self.loaded_classes
+            .insert(class_name.to_owned(), loaded_class.clone());
 
         Ok(loaded_class)
+    }
+
+    pub fn mark_as_loaded(&mut self, class_name: &str) {
+        if let Some(loaded_class) = self.loaded_classes.get_mut(class_name) {
+            debug_assert!(!loaded_class.is_initialised);
+            loaded_class.is_initialised = true;
+        } else {
+            panic!("Class should have been initialised");
+        }
     }
 
     fn find_class_file(&mut self, class_name: &str) -> JvmResult<Rc<ClassFile>> {
