@@ -15,7 +15,7 @@ mod verifier;
 
 fn main() {
     let class = verifier::verify_class_file(
-        class_parser::parse("test_classes/TestStaticMethodCallCache.class").unwrap(),
+        class_parser::parse("test_classes/IntegerMathTest.class").unwrap(),
     )
     .unwrap();
     println!("File:\n{class:?}");
@@ -25,10 +25,10 @@ fn main() {
     let mut jvm = JVM::new(class_loader);
     let result = jvm
         .run(
-            "TestStaticMethodCallCache".to_owned(),
+            "IntegerMathTest".to_owned(),
             "mainCall".to_owned(),
-            "(II)I".to_owned(),
-            vec![JvmValue::Int(1000), JvmValue::Int(100)],
+            "(II)[I".to_owned(),
+            vec![JvmValue::Int(8), JvmValue::Int(3)],
         )
         .unwrap()
         .unwrap();

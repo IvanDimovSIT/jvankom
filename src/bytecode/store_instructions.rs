@@ -50,3 +50,26 @@ pub fn store_reference_instruction<const INDEX: usize>(context: JvmContext) -> J
 
     Ok(())
 }
+
+pub fn store_integer_n_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+    let index_value = bytecode.code[frame.program_counter] as usize;
+    frame.program_counter += 1;
+
+    let int = pop_int(frame)?;
+
+    frame.local_variables[index_value] = JvmValue::Int(int);
+
+    Ok(())
+}
+
+pub fn store_integer_instruction<const INDEX: usize>(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+
+    let int = pop_int(frame)?;
+    debug_assert!(INDEX < frame.local_variables.len());
+    frame.local_variables[INDEX] = JvmValue::Int(int);
+
+    Ok(())
+}

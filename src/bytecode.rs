@@ -30,6 +30,7 @@ pub const ICONST_2: u8 = 0x5;
 pub const ICONST_3: u8 = 0x6;
 pub const ICONST_4: u8 = 0x7;
 pub const ICONST_5: u8 = 0x8;
+pub const BIPUSH: u8 = 0x10;
 pub const ILOAD: u8 = 0x15;
 pub const ALOAD: u8 = 0x19;
 pub const ILOAD_0: u8 = 0x1a;
@@ -41,7 +42,12 @@ pub const ALOAD_1: u8 = 0x2b;
 pub const ALOAD_2: u8 = 0x2c;
 pub const ALOAD_3: u8 = 0x2d;
 pub const IALOAD: u8 = 0x2e;
+pub const ISTORE: u8 = 0x36;
 pub const ASTORE: u8 = 0x3a;
+pub const ISTORE_0: u8 = 0x3b;
+pub const ISTORE_1: u8 = 0x3c;
+pub const ISTORE_2: u8 = 0x3d;
+pub const ISTORE_3: u8 = 0x3e;
 pub const ASTORE_0: u8 = 0x4b;
 pub const ASTORE_1: u8 = 0x4c;
 pub const ASTORE_2: u8 = 0x4d;
@@ -49,7 +55,13 @@ pub const ASTORE_3: u8 = 0x4e;
 pub const IASTORE: u8 = 0x4f;
 pub const POP: u8 = 0x57;
 pub const IADD: u8 = 0x60;
+pub const ISUB: u8 = 0x64;
+pub const IMUL: u8 = 0x68;
+pub const IDIV: u8 = 0x6c;
+pub const IREM: u8 = 0x70;
+pub const INEG: u8 = 0x74;
 pub const IRETURN: u8 = 0xac;
+pub const ARETURN: u8 = 0xb0;
 pub const RETURN: u8 = 0xb1;
 pub const INVOKESTATIC: u8 = 0xb8;
 pub const NEWARRAY: u8 = 0xbc;
@@ -73,6 +85,7 @@ impl BytecodeTable {
             (ICONST_3, integer_const_instruction::<3>),
             (ICONST_4, integer_const_instruction::<4>),
             (ICONST_5, integer_const_instruction::<5>),
+            (BIPUSH, bipush_instruction),
             (ILOAD, integer_load_n),
             (ALOAD, reference_load_n),
             (ILOAD_0, integer_load::<0>),
@@ -84,8 +97,18 @@ impl BytecodeTable {
             (ALOAD_2, reference_load_instruction::<2>),
             (ALOAD_3, reference_load_instruction::<3>),
             (IALOAD, load_integer_array_instruction),
+            (ISTORE, store_integer_n_instruction),
             (ASTORE, store_reference_n_instruction),
             (IADD, integer_add),
+            (ISUB, integer_subtract),
+            (IMUL, integer_muliply),
+            (INEG, integer_negate),
+            (IDIV, integer_divide),
+            (IREM, integer_remainder),
+            (ISTORE_0, store_integer_instruction::<0>),
+            (ISTORE_1, store_integer_instruction::<1>),
+            (ISTORE_2, store_integer_instruction::<2>),
+            (ISTORE_3, store_integer_instruction::<3>),
             (ASTORE_0, store_reference_instruction::<0>),
             (ASTORE_1, store_reference_instruction::<1>),
             (ASTORE_2, store_reference_instruction::<2>),
@@ -93,6 +116,7 @@ impl BytecodeTable {
             (IASTORE, store_integer_array_instruction),
             (POP, pop_instruction),
             (IRETURN, integer_return_instruction),
+            (ARETURN, object_return_instruction),
             (RETURN, return_instruction),
             (INVOKESTATIC, invoke_static_instruction),
             (NEWARRAY, new_array_instruction),

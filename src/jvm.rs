@@ -273,6 +273,55 @@ mod tests {
         assert_eq!(3, jvm.method_call_cache.get_cache_hits());
     }
 
+    #[test]
+    fn test_parameter_overload() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "ParameterOverloadTest".to_owned(),
+                "mainCall".to_owned(),
+                "(II)I".to_owned(),
+                vec![JvmValue::Int(3), JvmValue::Int(100)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(value) => assert_eq!(106, value),
+            _ => panic!("expected int"),
+        }
+    }
+
+    #[test]
+    fn test_integer_math() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "IntegerMathTest".to_owned(),
+                "mainCall".to_owned(),
+                "(II)[I".to_owned(),
+                vec![JvmValue::Int(8), JvmValue::Int(3)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Reference(Some(value)) => match jvm.heap.get(value).unwrap() {
+                crate::jvm_model::HeapObject::IntArray(items) => {
+                    assert_eq!(6, items.len());
+                    assert_eq!(11, items[0]);
+                    assert_eq!(-8, items[1]);
+                    assert_eq!(24, items[2]);
+                    assert_eq!(2, items[3]);
+                    assert_eq!(5, items[4]);
+                    assert_eq!(2, items[5]);
+                }
+                _ => panic!("expected int array"),
+            },
+            _ => panic!("expected array"),
+        }
+    }
+
     fn test_single_class_static_method_calls_helper(
         param1: i32,
         param2: i32,

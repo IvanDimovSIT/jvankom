@@ -1,14 +1,14 @@
 use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
 use crate::{
-    bytecode::{ALOAD, ASTORE, ILOAD, INVOKESTATIC, IRETURN, RETURN},
+    bytecode::{ALOAD, ASTORE, ILOAD, INVOKESTATIC, IRETURN, ISTORE, RETURN},
     class_file::{Attribute, Bytecode, ClassFile, ConstantValue, Method},
     class_parser::UnverifiedClassFile,
 };
 
 const RETURN_INSTRUCTIONS: [u8; 2] = [RETURN, IRETURN];
 /// instructions which load or store a local, based on the bytecode
-const LOAD_STORE_N_INSTRUCTIONS: [u8; 3] = [ILOAD, ALOAD, ASTORE];
+const LOAD_STORE_N_INSTRUCTIONS: [u8; 4] = [ILOAD, ISTORE, ALOAD, ASTORE];
 
 #[derive(Debug, Clone)]
 pub enum VerifierError {
