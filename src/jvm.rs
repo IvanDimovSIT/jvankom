@@ -39,6 +39,7 @@ impl JVM {
         {
             (m_index, b_index)
         } else {
+            class_loader.mark_as_loaded(class_name);
             return Ok(());
         };
 
