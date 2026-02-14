@@ -16,7 +16,7 @@ use crate::{
     verifier,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClassSource {
     Directory(String),
     Jar(String),
@@ -91,6 +91,10 @@ impl ClassLoader {
         } else {
             Err(ClassLoaderError { invalid_sources })
         }
+    }
+
+    pub fn get_loaded_count(&self) -> usize {
+        self.loaded_classes.len()
     }
 
     pub fn get(&mut self, class_name: &str) -> JvmResult<LoadedClass> {
@@ -180,5 +184,72 @@ impl ClassLoader {
 
     fn check_directory_path(path: &str) -> bool {
         fs::metadata(path).is_ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    pub fn test_load_from_directory() {
+        let mut class_loader =
+            ClassLoader::new(vec![ClassSource::Directory("test_classes".to_owned())]).unwrap();
+
+        let loaded_class = class_loader.get("Test").unwrap();
+        assert!(!loaded_class.is_initialised);
+        assert_eq!(1, class_loader.get_loaded_count());
+        assert_eq!("Test", loaded_class.class.get_class_name().unwrap());
+    }
+
+    #[test]
+    pub fn test_load_from_jar() {
+        let mut class_loader = ClassLoader::new(vec![ClassSource::Jar(
+            "test_classes/CrossCallTest.jar".to_owned(),
+        )])
+        .unwrap();
+
+        let loaded_class = class_loader.get("CrossCall2Test").unwrap();
+        assert!(!loaded_class.is_initialised);
+        assert_eq!(1, class_loader.get_loaded_count());
+        assert_eq!(
+            "CrossCall2Test",
+            loaded_class.class.get_class_name().unwrap()
+        );
+    }
+
+    #[test]
+    pub fn test_class_not_found() {
+        let mut class_loader =
+            ClassLoader::new(vec![ClassSource::Directory("test_classes".to_owned())]).unwrap();
+
+        let loaded_class = class_loader.get("NonExistingClass");
+        match loaded_class {
+            Ok(_) => panic!("Class should not exist"),
+            Err(err) => match *err {
+                JvmError::ClassLoaderError(class) => {
+                    debug_assert_eq!("Cannot find 'NonExistingClass'", class)
+                }
+                _ => panic!("Expected ClassLoaderError"),
+            },
+        }
+    }
+
+    #[test]
+    pub fn test_jar_not_found() {
+        let class_loader_result = ClassLoader::new(vec![ClassSource::Jar(
+            "test_classes/InvlaidJarFile.jar".to_owned(),
+        )]);
+
+        match class_loader_result {
+            Ok(_) => panic!("expected error"),
+            Err(ClassLoaderError { invalid_sources }) => {
+                assert_eq!(1, invalid_sources.len());
+                assert_eq!(
+                    ClassSource::Jar("test_classes/InvlaidJarFile.jar".to_owned(),),
+                    invalid_sources[0]
+                );
+            }
+        }
     }
 }

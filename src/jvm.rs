@@ -21,6 +21,7 @@ impl JVM {
         }
     }
 
+    /// calls <clinit> method on class and super classes if it hasn't been called
     pub fn initialise_class(
         thread: &mut JvmThread,
         loaded_class: &LoadedClass,
@@ -50,6 +51,12 @@ impl JVM {
             vec![],
         ));
         class_loader.mark_as_loaded(class_name);
+
+        // recusrively load super classes
+        if let Some(super_class_name) = loaded_class.class.get_super_class_name() {
+            let super_class = class_loader.get(super_class_name)?;
+            return Self::initialise_class(thread, &super_class, class_loader, class_name);
+        }
 
         Ok(())
     }
@@ -271,7 +278,7 @@ mod tests {
             _ => panic!("expected int"),
         }
 
-        assert_eq!(3, jvm.method_call_cache.get_cache_hits());
+        assert_eq!(2, jvm.method_call_cache.get_cache_hits());
     }
 
     #[test]
@@ -323,6 +330,32 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_cross_class_call() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/CrossCallTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "CrossCall1Test".to_owned(),
+                "callOtherClass".to_owned(),
+                "(I)I".to_owned(),
+                vec![JvmValue::Int(11)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => {
+                assert_eq!(44, int);
+            }
+            _ => panic!("expected int"),
+        }
+
+        assert_eq!(2, jvm.method_call_cache.get_cache_hits());
+        assert_eq!(2, jvm.class_loader.get_loaded_count());
+    }
+
     fn test_single_class_static_method_calls_helper(
         param1: i32,
         param2: i32,
@@ -342,7 +375,7 @@ mod tests {
             JvmValue::Int(x) => assert_eq!(expected_result, x),
             _ => panic!("Expected int result"),
         }
-        assert_eq!(3, jvm.method_call_cache.get_cache_hits());
+        assert_eq!(1, jvm.method_call_cache.get_cache_hits());
     }
 
     fn create_jvm(contexts: Vec<ClassSource>) -> JVM {

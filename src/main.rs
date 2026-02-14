@@ -20,15 +20,17 @@ fn main() {
     .unwrap();
     println!("File:\n{class:?}");
 
-    let class_loader =
-        ClassLoader::new(vec![ClassSource::Directory("test_classes".to_owned())]).unwrap();
+    let class_loader = ClassLoader::new(vec![ClassSource::Jar(
+        "test_classes/CrossCallTest.jar".to_owned(),
+    )])
+    .unwrap();
     let mut jvm = JVM::new(class_loader);
     let result = jvm
         .run(
-            "IntegerMathTest".to_owned(),
-            "mainCall".to_owned(),
-            "(II)[I".to_owned(),
-            vec![JvmValue::Int(8), JvmValue::Int(3)],
+            "CrossCall1Test".to_owned(),
+            "callOtherClass".to_owned(),
+            "(I)I".to_owned(),
+            vec![JvmValue::Int(10)],
         )
         .unwrap()
         .unwrap();
