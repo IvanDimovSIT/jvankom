@@ -47,14 +47,9 @@ pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
 
 pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
-    let index_byte1 = bytecode.code[frame.program_counter] as u16;
-    frame.program_counter += 1;
-    let index_byte2 = bytecode.code[frame.program_counter] as u16;
-    frame.program_counter += 1;
+    let unvalidated_cp_index = read_u16_from_bytecode(frame);
 
     // check cache
-    let unvalidated_cp_index = (index_byte1 << 8) | index_byte2;
     if let Some(call_info) = context
         .cache
         .method_call_cache
@@ -166,14 +161,9 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
 
 pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
-    let index_byte1 = bytecode.code[frame.program_counter] as u16;
-    frame.program_counter += 1;
-    let index_byte2 = bytecode.code[frame.program_counter] as u16;
-    frame.program_counter += 1;
+    let unvalidated_cp_index = read_u16_from_bytecode(frame);
 
     // check cache
-    let unvalidated_cp_index = (index_byte1 << 8) | index_byte2;
     if let Some(instance_info) = context
         .cache
         .object_instantiation_cache
