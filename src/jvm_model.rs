@@ -8,13 +8,14 @@ use std::{
 
 use crate::{
     class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
-    method_call_cache::MethodCallCache, verifier::VerifierError,
+    method_call_cache::MethodCallCache, object_instantiation_cache::ObjectInstantiationCache,
+    verifier::VerifierError,
 };
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ParameterCallType {
+pub enum DescriptorType {
     Integer,
     Long,
     Reference,
@@ -23,6 +24,22 @@ pub enum ParameterCallType {
     Byte,
     Float,
     Double,
+    Boolean,
+}
+impl DescriptorType {
+    pub fn create_default_value(self) -> JvmValue {
+        match self {
+            DescriptorType::Integer
+            | DescriptorType::Character
+            | DescriptorType::Byte
+            | DescriptorType::Boolean
+            | DescriptorType::Short => JvmValue::Int(0),
+            DescriptorType::Long => JvmValue::Long(0),
+            DescriptorType::Reference => JvmValue::Reference(None),
+            DescriptorType::Float => JvmValue::Float(0.0),
+            DescriptorType::Double => JvmValue::Double(0.0),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -78,6 +95,7 @@ pub enum JvmError {
     InvalidMethodDescriptor(String),
     InvalidConstantPoolIndex,
     InvalidMethodRefIndex(NonZeroUsize),
+    InvalidClassIndex(NonZeroUsize),
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -131,6 +149,9 @@ impl Display for JvmError {
                 format!("Invalid method ref index: '{index}'")
             }
             JvmError::InvalidConstantPoolIndex => "Invalid constant pool index'".to_owned(),
+            JvmError::InvalidClassIndex(index) => {
+                format!("Invalid class index: '{index}'")
+            }
         };
 
         f.write_str(&description)
@@ -294,9 +315,30 @@ impl JvmThread {
 }
 
 #[derive(Debug)]
+pub struct JvmCache {
+    pub method_call_cache: MethodCallCache,
+    pub object_instantiation_cache: ObjectInstantiationCache,
+}
+impl JvmCache {
+    pub fn new() -> Self {
+        Self {
+            method_call_cache: MethodCallCache::new(),
+            object_instantiation_cache: ObjectInstantiationCache::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct JvmContext<'a> {
     pub class_loader: &'a mut ClassLoader,
     pub current_thread: &'a mut JvmThread,
     pub heap: &'a mut JvmHeap,
-    pub method_call_cache: &'a mut MethodCallCache,
+    pub cache: &'a mut JvmCache,
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldInfo {
+    pub name: String,
+    pub class: String,
+    pub descriptor_type: DescriptorType,
 }

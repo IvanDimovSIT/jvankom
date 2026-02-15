@@ -1,7 +1,9 @@
 use crate::{
     bytecode::BYTECODE_TABLE,
     class_loader::{ClassLoader, LoadedClass},
-    jvm_model::{JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmValue},
+    jvm_model::{
+        JvmCache, JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmValue,
+    },
     method_call_cache::MethodCallCache,
 };
 
@@ -9,7 +11,7 @@ pub struct JVM {
     class_loader: ClassLoader,
     threads: Vec<JvmThread>,
     heap: JvmHeap,
-    method_call_cache: MethodCallCache,
+    cache: JvmCache,
 }
 impl JVM {
     pub fn new(class_loader: ClassLoader) -> Self {
@@ -17,7 +19,7 @@ impl JVM {
             class_loader,
             threads: vec![],
             heap: JvmHeap::new(),
-            method_call_cache: MethodCallCache::new(),
+            cache: JvmCache::new(),
         }
     }
 
@@ -147,7 +149,7 @@ impl JVM {
                     current_thread,
                     heap: &mut self.heap,
                     class_loader: &mut self.class_loader,
-                    method_call_cache: &mut self.method_call_cache,
+                    cache: &mut self.cache,
                 },
             )?;
         }
@@ -278,7 +280,7 @@ mod tests {
             _ => panic!("expected int"),
         }
 
-        assert_eq!(2, jvm.method_call_cache.get_cache_hits());
+        assert_eq!(2, jvm.cache.method_call_cache.get_cache_hits());
     }
 
     #[test]
@@ -352,7 +354,7 @@ mod tests {
             _ => panic!("expected int"),
         }
 
-        assert_eq!(2, jvm.method_call_cache.get_cache_hits());
+        assert_eq!(2, jvm.cache.method_call_cache.get_cache_hits());
         assert_eq!(2, jvm.class_loader.get_loaded_count());
     }
 
@@ -375,7 +377,7 @@ mod tests {
             JvmValue::Int(x) => assert_eq!(expected_result, x),
             _ => panic!("Expected int result"),
         }
-        assert_eq!(1, jvm.method_call_cache.get_cache_hits());
+        assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
     }
 
     fn create_jvm(contexts: Vec<ClassSource>) -> JVM {

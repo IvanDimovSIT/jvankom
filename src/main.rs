@@ -11,6 +11,7 @@ mod class_parser;
 mod jvm;
 mod jvm_model;
 mod method_call_cache;
+mod object_instantiation_cache;
 mod verifier;
 
 fn main() {

@@ -2,7 +2,7 @@
 use std::{cell::Cell, sync::atomic::AtomicUsize};
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{class_file::ClassFile, jvm_model::ParameterCallType};
+use crate::{class_file::ClassFile, jvm_model::DescriptorType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct StaticMethodCallKey {
@@ -22,7 +22,7 @@ impl StaticMethodCallKey {
 struct StaticMethodInfoKey {
     class_ptr: usize,
     method_index: usize,
-    parameter_list: Vec<ParameterCallType>,
+    parameter_list: Vec<DescriptorType>,
 }
 impl From<StaticMethodCallInfo> for StaticMethodInfoKey {
     fn from(value: StaticMethodCallInfo) -> Self {
@@ -40,7 +40,7 @@ pub struct StaticMethodCallInfo {
     pub method_index: usize,
     pub bytecode_index: usize,
     /// list of types in stack pop order (reversed)
-    pub parameter_list: Vec<ParameterCallType>,
+    pub parameter_list: Vec<DescriptorType>,
 }
 
 #[derive(Debug)]

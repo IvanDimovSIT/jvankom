@@ -1,10 +1,14 @@
 use std::rc::Rc;
 
 use crate::{
-    bytecode::method_descriptor_parser::{parse_descriptor, pop_params},
+    bytecode::{
+        method_descriptor_parser::{parse_descriptor, pop_params},
+        object_field_initialisation::{determine_field_types, initialise_object_fields},
+    },
     class_file::MethodAccessFlags,
     jvm::JVM,
     method_call_cache::StaticMethodCallInfo,
+    object_instantiation_cache::ObjectInstantiationInfo,
 };
 
 use super::*;
@@ -52,6 +56,7 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
     // check cache
     let unvalidated_cp_index = (index_byte1 << 8) | index_byte2;
     if let Some(call_info) = context
+        .cache
         .method_call_cache
         .get_static_call_info(&frame.class, unvalidated_cp_index)
     {
@@ -125,7 +130,7 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
         parameter_list: param_types.clone(),
     };
 
-    context.method_call_cache.register_static_call_info(
+    context.cache.method_call_cache.register_static_call_info(
         static_method_call_info,
         unvalidated_cp_index,
         &frame.class,
@@ -155,6 +160,92 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
     );
 
     context.current_thread.push(new_frame);
+
+    Ok(())
+}
+
+pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+    let index_byte1 = bytecode.code[frame.program_counter] as u16;
+    frame.program_counter += 1;
+    let index_byte2 = bytecode.code[frame.program_counter] as u16;
+    frame.program_counter += 1;
+
+    // check cache
+    let unvalidated_cp_index = (index_byte1 << 8) | index_byte2;
+    if let Some(instance_info) = context
+        .cache
+        .object_instantiation_cache
+        .get_object_instantiation_info(&frame.class, unvalidated_cp_index)
+    {
+        let object =
+            initialise_object_fields(instance_info.class.clone(), &instance_info.field_infos);
+        let object_ref = context.heap.allocate(object);
+        frame
+            .operand_stack
+            .push(JvmValue::Reference(Some(object_ref)));
+
+        return Ok(());
+    }
+
+    // find and load class
+    let cp_index = if let Some(index) = NonZeroUsize::new(unvalidated_cp_index as usize) {
+        index
+    } else {
+        return Err(JvmError::InvalidConstantPoolIndex.bx());
+    };
+    let current_class = frame.class.clone();
+    let class_name = if let Some(name) = current_class.constant_pool.get_class_name(cp_index) {
+        name
+    } else {
+        return Err(JvmError::InvalidClassIndex(cp_index).bx());
+    };
+
+    let loaded_class = context.class_loader.get(class_name)?;
+
+    // initialise class and rewind
+    if !loaded_class.is_initialised {
+        frame.program_counter -= 3;
+        JVM::initialise_class(
+            context.current_thread,
+            &loaded_class,
+            context.class_loader,
+            class_name,
+        )?;
+
+        return Ok(());
+    }
+
+    let field_infos = if let Some(instantiation_info) = context
+        .cache
+        .object_instantiation_cache
+        .get_object_instatiation_info_from_class(&loaded_class.class)
+    {
+        instantiation_info.field_infos.clone()
+    } else {
+        determine_field_types(&loaded_class.class, context.class_loader)?
+    };
+
+    let object = initialise_object_fields(loaded_class.class.clone(), &field_infos);
+    let object_ref = context.heap.allocate(object);
+    frame
+        .operand_stack
+        .push(JvmValue::Reference(Some(object_ref)));
+
+    let object_instantiation_info = ObjectInstantiationInfo {
+        field_infos,
+        class: loaded_class.class,
+    };
+
+    context
+        .cache
+        .object_instantiation_cache
+        .register_object_instantiation_info(
+            object_instantiation_info,
+            &current_class,
+            unvalidated_cp_index,
+        );
 
     Ok(())
 }

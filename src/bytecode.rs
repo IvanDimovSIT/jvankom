@@ -17,6 +17,7 @@ mod control_instructions;
 mod load_instructions;
 mod math_instructions;
 mod method_descriptor_parser;
+mod object_field_initialisation;
 mod references_instructions;
 mod stack_instructions;
 mod store_instructions;
@@ -64,6 +65,7 @@ pub const IRETURN: u8 = 0xac;
 pub const ARETURN: u8 = 0xb0;
 pub const RETURN: u8 = 0xb1;
 pub const INVOKESTATIC: u8 = 0xb8;
+pub const NEW: u8 = 0xbb;
 pub const NEWARRAY: u8 = 0xbc;
 
 type BytecodeInstruction = fn(JvmContext) -> JvmResult<()>;
@@ -119,6 +121,7 @@ impl BytecodeTable {
             (ARETURN, object_return_instruction),
             (RETURN, return_instruction),
             (INVOKESTATIC, invoke_static_instruction),
+            (NEW, new_instruction),
             (NEWARRAY, new_array_instruction),
         ];
 
