@@ -12,7 +12,7 @@ use zip::ZipArchive;
 use crate::{
     class_file::ClassFile,
     class_parser::{self, ClassParserError, UnverifiedClassFile},
-    jvm_model::{JvmError, JvmResult},
+    jvm_model::{HeapObject, JvmError, JvmResult},
     verifier,
 };
 

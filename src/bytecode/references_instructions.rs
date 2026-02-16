@@ -2,12 +2,14 @@ use std::rc::Rc;
 
 use crate::{
     bytecode::{
-        method_descriptor_parser::{parse_descriptor, pop_params},
+        method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_virtual},
         object_field_initialisation::{determine_field_types, initialise_object_fields},
     },
-    class_file::MethodAccessFlags,
+    class_file::{ClassFile, MethodAccessFlags},
+    class_loader::ClassLoader,
     jvm::JVM,
-    method_call_cache::StaticMethodCallInfo,
+    jvm_model::JvmHeap,
+    method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
     object_instantiation_cache::ObjectInstantiationInfo,
 };
 
@@ -70,11 +72,7 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
 
     // cache miss: resolve method
     // find and load class
-    let cp_index = if let Some(index) = NonZeroUsize::new(unvalidated_cp_index as usize) {
-        index
-    } else {
-        return Err(JvmError::InvalidConstantPoolIndex.bx());
-    };
+    let cp_index = validate_cp_index(unvalidated_cp_index)?;
     let current_class = frame.class.clone();
     let (class_name, method_name, method_descriptor) = if let Some(called_method) = current_class
         .constant_pool
@@ -180,11 +178,7 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
     }
 
     // find and load class
-    let cp_index = if let Some(index) = NonZeroUsize::new(unvalidated_cp_index as usize) {
-        index
-    } else {
-        return Err(JvmError::InvalidConstantPoolIndex.bx());
-    };
+    let cp_index = validate_cp_index(unvalidated_cp_index)?;
     let current_class = frame.class.clone();
     let class_name = if let Some(name) = current_class.constant_pool.get_class_name(cp_index) {
         name
@@ -238,4 +232,185 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
         );
 
     Ok(())
+}
+
+pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let unvalidated_cp_index = read_u16_from_bytecode(frame);
+    let current_class = frame.class.clone();
+
+    let cp_index = validate_cp_index(unvalidated_cp_index)?;
+    let (class_name, method_name, method_descriptor) = if let Some(called_method) = current_class
+        .constant_pool
+        .get_class_methodname_descriptor(cp_index)
+    {
+        called_method
+    } else {
+        return Err(JvmError::InvalidMethodRefIndex(cp_index).bx());
+    };
+
+    let called_class = context.class_loader.get(class_name)?;
+
+    // initialise class and rewind
+    if !called_class.is_initialised {
+        frame.program_counter -= 3;
+        JVM::initialise_class(
+            context.current_thread,
+            &called_class,
+            context.class_loader,
+            class_name,
+        )?;
+
+        return Ok(());
+    }
+
+    let object_ref = if let Some(reference) = pop_reference(frame)? {
+        reference
+    } else {
+        todo!("Throw NullPointerException");
+    };
+    let called_object = context
+        .heap
+        .get(object_ref)
+        .ok_or_else(|| JvmError::InvalidReference.bx())?;
+    let object_class = match called_object {
+        HeapObject::Object { class, fields: _ } => class.clone(),
+        _ => context.class_loader.get("java/lang/Object")?.class,
+    };
+
+    if let Some(info) = context.cache.method_call_cache.get_virtual_call_info(
+        &object_class,
+        method_name,
+        method_descriptor,
+    ) {
+        let called_method = &info.resolved_class.methods[info.method_index];
+        if called_method
+            .access_flags
+            .check_flag(MethodAccessFlags::PRIVATE_FLAG)
+            && Rc::as_ptr(&info.resolved_class) != Rc::as_ptr(&frame.class)
+        {
+            todo!("Throw IllegalAccessError")
+        }
+        let params = pop_params_for_virtual(object_ref, &info.types, frame)?;
+
+        let new_frame = JvmStackFrame::new(
+            info.resolved_class.clone(),
+            info.method_index,
+            info.bytecode_index,
+            params,
+        );
+
+        context.current_thread.push(new_frame);
+
+        return Ok(());
+    }
+
+    let (resolved_class, called_method_index, called_bytecode_index) = find_virtual_method(
+        &object_class,
+        context.class_loader,
+        method_name,
+        method_descriptor,
+    )?;
+    let called_method = &resolved_class.methods[called_method_index];
+    if called_method
+        .access_flags
+        .check_flag(MethodAccessFlags::STATIC_FLAG)
+    {
+        todo!("Throw IncopatibleClassChangeError")
+    }
+    if called_method
+        .access_flags
+        .check_flag(MethodAccessFlags::PRIVATE_FLAG)
+        && Rc::as_ptr(&resolved_class) != Rc::as_ptr(&frame.class)
+    {
+        todo!("Throw IllegalAccessError")
+    }
+
+    let param_types = parse_descriptor(method_descriptor)?;
+    let virtual_method_call_info = VirtualMethodCallInfo {
+        bytecode_index: called_bytecode_index,
+        method_index: called_method_index,
+        resolved_class: resolved_class.clone(),
+        types: param_types.clone(),
+    };
+    context.cache.method_call_cache.register_virtual_call_info(
+        &object_class,
+        method_name,
+        method_descriptor,
+        virtual_method_call_info,
+    );
+
+    let params = pop_params_for_virtual(object_ref, &param_types, frame)?;
+
+    let new_frame = JvmStackFrame::new(
+        resolved_class,
+        called_method_index,
+        called_bytecode_index,
+        params,
+    );
+
+    context.current_thread.push(new_frame);
+
+    Ok(())
+}
+
+/// returns classfile + method index + bytecode index
+fn find_virtual_method(
+    object_class: &Rc<ClassFile>,
+    class_loader: &mut ClassLoader,
+    method_name: &str,
+    method_descriptor: &str,
+) -> JvmResult<(Rc<ClassFile>, usize, usize)> {
+    if let Some((method, bytecode_index)) =
+        object_class.get_method_and_bytecode_index(method_name, method_descriptor)
+    {
+        return Ok((object_class.clone(), method, bytecode_index));
+    }
+
+    let parent_name = if let Some(parent_name) = object_class.get_super_class_name() {
+        parent_name
+    } else {
+        return Err(construct_virtual_method_error(
+            method_name,
+            method_descriptor,
+        ));
+    };
+    let mut parent_class = class_loader.get(parent_name)?.class.clone();
+    loop {
+        if let Some((method, bytecode_index)) =
+            parent_class.get_method_and_bytecode_index(method_name, method_descriptor)
+        {
+            return Ok((parent_class, method, bytecode_index));
+        }
+
+        let parent_class_name = if let Some(parent_class_name) = parent_class.get_super_class_name()
+        {
+            parent_class_name
+        } else {
+            return Err(construct_virtual_method_error(
+                method_name,
+                method_descriptor,
+            ));
+        };
+        parent_class = class_loader.get(parent_class_name)?.class.clone();
+    }
+}
+
+fn construct_virtual_method_error(
+    method_name: impl Into<String>,
+    method_descriptor: impl Into<String>,
+) -> Box<JvmError> {
+    JvmError::VirtualMethodError {
+        method_name: method_name.into(),
+        method_descriptor: method_descriptor.into(),
+    }
+    .bx()
+}
+
+fn validate_cp_index(unvalidated_cp_index: u16) -> JvmResult<NonZeroUsize> {
+    if let Some(index) = NonZeroUsize::new(unvalidated_cp_index as usize) {
+        Ok(index)
+    } else {
+        Err(JvmError::InvalidConstantPoolIndex.bx())
+    }
 }

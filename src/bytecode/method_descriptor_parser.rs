@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use crate::{
     bytecode::{pop_int, pop_long, pop_reference},
     jvm_model::{DescriptorType, JvmError, JvmResult, JvmStackFrame, JvmValue},
@@ -46,6 +48,19 @@ pub fn parse_descriptor(method_descriptor: &str) -> JvmResult<Vec<DescriptorType
     types.reverse();
 
     Ok(types)
+}
+
+/// types need to be in pop order (reversed)
+pub fn pop_params_for_virtual(
+    object_ref: NonZeroUsize,
+    types: &[DescriptorType],
+    frame: &mut JvmStackFrame,
+) -> JvmResult<Vec<JvmValue>> {
+    let mut params = Vec::with_capacity(types.len() + 1);
+    params.push(JvmValue::Reference(Some(object_ref)));
+    params.extend(pop_params(types, frame)?);
+
+    Ok(params)
 }
 
 /// types need to be in pop order (reversed)

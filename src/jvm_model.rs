@@ -96,6 +96,10 @@ pub enum JvmError {
     InvalidConstantPoolIndex,
     InvalidMethodRefIndex(NonZeroUsize),
     InvalidClassIndex(NonZeroUsize),
+    VirtualMethodError {
+        method_name: String,
+        method_descriptor: String,
+    },
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -152,6 +156,12 @@ impl Display for JvmError {
             JvmError::InvalidClassIndex(index) => {
                 format!("Invalid class index: '{index}'")
             }
+            JvmError::VirtualMethodError {
+                method_name,
+                method_descriptor,
+            } => {
+                format!("Error calling virtual method: {method_name}{method_descriptor}")
+            }
         };
 
         f.write_str(&description)
@@ -197,6 +207,17 @@ pub enum HeapObject {
     DoubleArray(Vec<f64>),
     LongArray(Vec<i64>),
     ObjectArray(Vec<Option<NonZeroUsize>>),
+}
+impl HeapObject {
+    pub fn get_parent(&self) -> Option<&str> {
+        match self {
+            HeapObject::Object {
+                class,
+                fields: _fields,
+            } => class.get_super_class_name(),
+            _ => Some("java/lang/Object"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -1,5 +1,5 @@
 #[cfg(debug_assertions)]
-use std::{cell::Cell, sync::atomic::AtomicUsize};
+use std::cell::Cell;
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{class_file::ClassFile, jvm_model::DescriptorType};
@@ -43,11 +43,40 @@ pub struct StaticMethodCallInfo {
     pub parameter_list: Vec<DescriptorType>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct VirtualMethodCallKey {
+    method_name: String,
+    method_descriptor: String,
+    object_class_ptr: usize,
+}
+impl VirtualMethodCallKey {
+    fn new(
+        object_class: &Rc<ClassFile>,
+        method_name: impl Into<String>,
+        method_descriptor: impl Into<String>,
+    ) -> Self {
+        Self {
+            object_class_ptr: Rc::as_ptr(object_class) as usize,
+            method_name: method_name.into(),
+            method_descriptor: method_descriptor.into(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct VirtualMethodCallInfo {
+    pub bytecode_index: usize,
+    pub method_index: usize,
+    pub resolved_class: Rc<ClassFile>,
+    pub types: Vec<DescriptorType>,
+}
+
 #[derive(Debug)]
 pub struct MethodCallCache {
     static_method_cache: HashMap<StaticMethodCallKey, usize>,
     static_method_info_identity: HashMap<StaticMethodInfoKey, usize>,
     static_method_infos: Vec<StaticMethodCallInfo>,
+    virtual_method_cache: HashMap<VirtualMethodCallKey, VirtualMethodCallInfo>,
     // only used for tests
     #[cfg(debug_assertions)]
     cache_hits: Cell<usize>,
@@ -60,6 +89,7 @@ impl MethodCallCache {
             static_method_infos: vec![],
             #[cfg(debug_assertions)]
             cache_hits: Cell::new(0),
+            virtual_method_cache: HashMap::new(),
         }
     }
 
@@ -76,6 +106,23 @@ impl MethodCallCache {
         }
 
         Some(&self.static_method_infos[index])
+    }
+
+    pub fn get_virtual_call_info(
+        &self,
+        object_class: &Rc<ClassFile>,
+        method_name: &str,
+        method_descriptor: &str,
+    ) -> Option<&VirtualMethodCallInfo> {
+        let key = VirtualMethodCallKey::new(object_class, method_name, method_descriptor);
+        let info = self.virtual_method_cache.get(&key)?;
+
+        #[cfg(debug_assertions)]
+        {
+            self.cache_hits.set(self.cache_hits.get() + 1);
+        }
+
+        Some(info)
     }
 
     pub fn register_static_call_info(
@@ -96,6 +143,18 @@ impl MethodCallCache {
             self.static_method_info_identity
                 .insert(info_identity_key, info_index);
         }
+    }
+
+    pub fn register_virtual_call_info(
+        &mut self,
+        object_class: &Rc<ClassFile>,
+        method_name: &str,
+        method_descriptor: &str,
+        virtual_method_call_info: VirtualMethodCallInfo,
+    ) {
+        let key = VirtualMethodCallKey::new(object_class, method_name, method_descriptor);
+        self.virtual_method_cache
+            .insert(key, virtual_method_call_info);
     }
 
     #[cfg(debug_assertions)]
