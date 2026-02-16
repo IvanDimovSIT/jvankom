@@ -63,6 +63,21 @@ pub fn pop_params_for_virtual(
     Ok(params)
 }
 
+pub fn pop_params_for_special(
+    types: &[DescriptorType],
+    frame: &mut JvmStackFrame,
+) -> JvmResult<Vec<JvmValue>> {
+    let mut params = Vec::with_capacity(types.len() + 1);
+    let reference = pop_reference(frame)?;
+    if reference.is_none() {
+        todo!("Throw NullPointerException")
+    }
+    params.push(JvmValue::Reference(reference));
+    params.extend(pop_params(types, frame)?);
+
+    Ok(params)
+}
+
 /// types need to be in pop order (reversed)
 pub fn pop_params(types: &[DescriptorType], frame: &mut JvmStackFrame) -> JvmResult<Vec<JvmValue>> {
     let mut params = Vec::with_capacity(4);

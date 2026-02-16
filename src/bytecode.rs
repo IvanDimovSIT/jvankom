@@ -66,6 +66,7 @@ pub const IRETURN: u8 = 0xac;
 pub const ARETURN: u8 = 0xb0;
 pub const RETURN: u8 = 0xb1;
 pub const INVOKEVIRTUAL: u8 = 0xb6;
+pub const INVOKESPECIAL: u8 = 0xb7;
 pub const INVOKESTATIC: u8 = 0xb8;
 pub const NEW: u8 = 0xbb;
 pub const NEWARRAY: u8 = 0xbc;
@@ -123,7 +124,8 @@ impl BytecodeTable {
             (ARETURN, object_return_instruction),
             (RETURN, return_instruction),
             (INVOKEVIRTUAL, invoke_virtual_instruction),
-            (INVOKESTATIC, invoke_static_instruction),
+            (INVOKESPECIAL, invoke_static_or_special_instruction::<true>),
+            (INVOKESTATIC, invoke_static_or_special_instruction::<false>),
             (NEW, new_instruction),
             (NEWARRAY, new_array_instruction),
         ];

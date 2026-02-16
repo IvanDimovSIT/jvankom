@@ -2,13 +2,15 @@ use std::rc::Rc;
 
 use crate::{
     bytecode::{
-        method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_virtual},
+        method_descriptor_parser::{
+            parse_descriptor, pop_params, pop_params_for_special, pop_params_for_virtual,
+        },
         object_field_initialisation::{determine_field_types, initialise_object_fields},
     },
     class_file::{ClassFile, MethodAccessFlags},
     class_loader::ClassLoader,
     jvm::JVM,
-    jvm_model::JvmHeap,
+    jvm_model::{DescriptorType, JvmHeap},
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
     object_instantiation_cache::ObjectInstantiationInfo,
 };
@@ -47,7 +49,9 @@ pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
-pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
+pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
+    context: JvmContext,
+) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
 
@@ -57,7 +61,8 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
         .method_call_cache
         .get_static_call_info(&frame.class, unvalidated_cp_index)
     {
-        let params = pop_params(&call_info.parameter_list, frame)?;
+        let params =
+            pop_params_for_static_or_special::<IS_SPECIAL>(&call_info.parameter_list, frame)?;
         let new_frame = JvmStackFrame::new(
             call_info.class.clone(),
             call_info.method_index,
@@ -99,9 +104,10 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
 
     // check access
     let called_method = &loaded_class.class.methods[called_method_index];
-    if !called_method
-        .access_flags
-        .check_flag(MethodAccessFlags::STATIC_FLAG)
+    if IS_SPECIAL
+        == called_method
+            .access_flags
+            .check_flag(MethodAccessFlags::STATIC_FLAG)
     {
         todo!("Throw IncopatibleClassChangeError")
     }
@@ -143,7 +149,7 @@ pub fn invoke_static_instruction(context: JvmContext) -> JvmResult<()> {
     }
 
     // call resolved method
-    let params = pop_params(&param_types, frame)?;
+    let params = pop_params_for_static_or_special::<IS_SPECIAL>(&param_types, frame)?;
 
     let new_frame = JvmStackFrame::new(
         loaded_class.class.clone(),
@@ -412,5 +418,16 @@ fn validate_cp_index(unvalidated_cp_index: u16) -> JvmResult<NonZeroUsize> {
         Ok(index)
     } else {
         Err(JvmError::InvalidConstantPoolIndex.bx())
+    }
+}
+
+fn pop_params_for_static_or_special<const IS_SPECIAL: bool>(
+    types: &[DescriptorType],
+    frame: &mut JvmStackFrame,
+) -> JvmResult<Vec<JvmValue>> {
+    if IS_SPECIAL {
+        pop_params_for_special(types, frame)
+    } else {
+        pop_params(types, frame)
     }
 }
