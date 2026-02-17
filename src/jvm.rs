@@ -4,7 +4,7 @@ use crate::{
     jvm_model::{
         JvmCache, JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmValue,
     },
-    method_call_cache::MethodCallCache,
+    native_method_resolver::NativeMethodResolver,
 };
 
 pub struct JVM {
@@ -12,6 +12,7 @@ pub struct JVM {
     threads: Vec<JvmThread>,
     heap: JvmHeap,
     cache: JvmCache,
+    native_method_resolver: NativeMethodResolver,
 }
 impl JVM {
     pub fn new(class_loader: ClassLoader) -> Self {
@@ -20,6 +21,7 @@ impl JVM {
             threads: vec![],
             heap: JvmHeap::new(),
             cache: JvmCache::new(),
+            native_method_resolver: NativeMethodResolver::new(),
         }
     }
 
@@ -46,12 +48,20 @@ impl JVM {
             return Ok(());
         };
 
-        thread.push(JvmStackFrame::new(
-            loaded_class.class.clone(),
-            method_index,
-            bytecode_index,
-            vec![],
-        ));
+        if let Some(bytecode_index) = bytecode_index {
+            thread.push(JvmStackFrame::new(
+                loaded_class.class.clone(),
+                method_index,
+                bytecode_index,
+                vec![],
+            ));
+        } else {
+            return Err(JvmError::ExpectedNonNativeMethod {
+                method_name: INITIALISE_CLASS_METHOD.to_owned(),
+                method_descriptor: INITIALISE_CLASS_DESCIPTOR.to_owned(),
+            }
+            .bx());
+        }
         class_loader.mark_as_loaded(class_name);
 
         // recusrively load super classes
@@ -61,6 +71,10 @@ impl JVM {
         }
 
         Ok(())
+    }
+
+    pub fn get_threads(self) -> Vec<JvmThread> {
+        self.threads
     }
 
     pub fn run(
@@ -85,11 +99,19 @@ impl JVM {
             .bx());
         };
 
+        if bytecode_index.is_none() {
+            return Err(JvmError::ExpectedNonNativeMethod {
+                method_name,
+                method_descriptor,
+            }
+            .bx());
+        }
+
         let mut thread = JvmThread::new();
         let stack_frame = JvmStackFrame::new(
             loaded_class.class.clone(),
             method_index,
-            bytecode_index,
+            bytecode_index.unwrap(),
             params,
         );
         thread.push(stack_frame);
@@ -137,6 +159,8 @@ impl JVM {
                     continue;
                 }
                 debug_assert!(frame.program_counter < bytecode.code.len());
+                // DEBUG
+                frame.debug_print();
 
                 let instruction = bytecode.code[frame.program_counter];
                 frame.program_counter += 1;
@@ -150,6 +174,7 @@ impl JVM {
                     heap: &mut self.heap,
                     class_loader: &mut self.class_loader,
                     cache: &mut self.cache,
+                    native_method_resolver: &mut self.native_method_resolver,
                 },
             )?;
         }

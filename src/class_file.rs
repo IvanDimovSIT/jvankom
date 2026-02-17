@@ -352,16 +352,17 @@ impl ClassFile {
         &self,
         method_name: &str,
         descriptor: &str,
-    ) -> Option<(usize, usize)> {
+    ) -> Option<(usize, Option<usize>)> {
         for (index, method) in self.methods.iter().enumerate() {
             let methods_match = self.constant_pool.get_utf8(method.name_index)? == method_name
                 && self.constant_pool.get_utf8(method.descriptor_index)? == descriptor;
             if methods_match {
-                let (bytecode_index, _) = method
+                let bytecode_index = method
                     .attributes
                     .iter()
                     .enumerate()
-                    .find(|(_, atr)| matches!(atr, Attribute::Code(_)))?;
+                    .find(|(_, atr)| matches!(atr, Attribute::Code(_)))
+                    .map(|x| x.0);
 
                 return Some((index, bytecode_index));
             }

@@ -10,9 +10,9 @@ use crate::{
     class_file::{ClassFile, MethodAccessFlags},
     class_loader::ClassLoader,
     jvm::JVM,
-    jvm_model::{DescriptorType, JvmHeap},
+    jvm_model::DescriptorType,
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
-    object_instantiation_cache::ObjectInstantiationInfo,
+    object_instantiation_cache::ClassFieldInfo,
 };
 
 use super::*;
@@ -63,14 +63,24 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
     {
         let params =
             pop_params_for_static_or_special::<IS_SPECIAL>(&call_info.parameter_list, frame)?;
-        let new_frame = JvmStackFrame::new(
-            call_info.class.clone(),
-            call_info.method_index,
-            call_info.bytecode_index,
-            params,
-        );
+        if let Some(bytecode_index) = call_info.bytecode_index {
+            let new_frame = JvmStackFrame::new(
+                call_info.class.clone(),
+                call_info.method_index,
+                bytecode_index,
+                params,
+            );
 
-        context.current_thread.push(new_frame);
+            context.current_thread.push(new_frame);
+        } else {
+            return context.native_method_resolver.execute_native_method(
+                context.current_thread,
+                context.heap,
+                params,
+                call_info.method_index,
+                call_info.class.clone(),
+            );
+        }
 
         return Ok(());
     };
@@ -151,14 +161,31 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
     // call resolved method
     let params = pop_params_for_static_or_special::<IS_SPECIAL>(&param_types, frame)?;
 
-    let new_frame = JvmStackFrame::new(
-        loaded_class.class.clone(),
-        called_method_index,
-        called_bytecode_index,
-        params,
-    );
+    if let Some(bytecode_index) = called_bytecode_index {
+        let new_frame = JvmStackFrame::new(
+            loaded_class.class.clone(),
+            called_method_index,
+            bytecode_index,
+            params,
+        );
 
-    context.current_thread.push(new_frame);
+        context.current_thread.push(new_frame);
+    } else {
+        if !called_method
+            .access_flags
+            .check_flag(MethodAccessFlags::NATIVE_FLAG)
+        {
+            todo!("should be native method")
+        }
+
+        return context.native_method_resolver.execute_native_method(
+            context.current_thread,
+            context.heap,
+            params,
+            called_method_index,
+            loaded_class.class.clone(),
+        );
+    }
 
     Ok(())
 }
@@ -171,7 +198,7 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
     if let Some(instance_info) = context
         .cache
         .object_instantiation_cache
-        .get_object_instantiation_info(&frame.class, unvalidated_cp_index)
+        .get_class_field_info(&frame.class, unvalidated_cp_index)
     {
         let object =
             initialise_object_fields(instance_info.class.clone(), &instance_info.field_infos);
@@ -223,12 +250,12 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
         .operand_stack
         .push(JvmValue::Reference(Some(object_ref)));
 
-    let object_instantiation_info = ObjectInstantiationInfo {
+    let object_instantiation_info = ClassFieldInfo {
         field_infos,
         class: loaded_class.class,
     };
 
-    context
+    let object_instantiation_index = context
         .cache
         .object_instantiation_cache
         .register_object_instantiation_info(
@@ -236,6 +263,14 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
             &current_class,
             unvalidated_cp_index,
         );
+
+    if loaded_class.object_instantiation_index.is_none()
+        && let Some(index) = object_instantiation_index
+    {
+        context
+            .class_loader
+            .set_object_instantiation_index(class_name, index);
+    }
 
     Ok(())
 }
@@ -299,14 +334,24 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
         }
         let params = pop_params_for_virtual(object_ref, &info.types, frame)?;
 
-        let new_frame = JvmStackFrame::new(
-            info.resolved_class.clone(),
-            info.method_index,
-            info.bytecode_index,
-            params,
-        );
+        if let Some(bytecode_index) = info.bytecode_index {
+            let new_frame = JvmStackFrame::new(
+                info.resolved_class.clone(),
+                info.method_index,
+                bytecode_index,
+                params,
+            );
 
-        context.current_thread.push(new_frame);
+            context.current_thread.push(new_frame);
+        } else {
+            return context.native_method_resolver.execute_native_method(
+                context.current_thread,
+                context.heap,
+                params,
+                info.method_index,
+                info.resolved_class.clone(),
+            );
+        }
 
         return Ok(());
     }
@@ -348,14 +393,27 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
 
     let params = pop_params_for_virtual(object_ref, &param_types, frame)?;
 
-    let new_frame = JvmStackFrame::new(
-        resolved_class,
-        called_method_index,
-        called_bytecode_index,
-        params,
-    );
+    if let Some(bytecode_index) = called_bytecode_index {
+        let new_frame =
+            JvmStackFrame::new(resolved_class, called_method_index, bytecode_index, params);
 
-    context.current_thread.push(new_frame);
+        context.current_thread.push(new_frame);
+    } else {
+        if !called_method
+            .access_flags
+            .check_flag(MethodAccessFlags::NATIVE_FLAG)
+        {
+            todo!("should be native method")
+        }
+
+        return context.native_method_resolver.execute_native_method(
+            context.current_thread,
+            context.heap,
+            params,
+            called_method_index,
+            resolved_class,
+        );
+    }
 
     Ok(())
 }
@@ -366,7 +424,7 @@ fn find_virtual_method(
     class_loader: &mut ClassLoader,
     method_name: &str,
     method_descriptor: &str,
-) -> JvmResult<(Rc<ClassFile>, usize, usize)> {
+) -> JvmResult<(Rc<ClassFile>, usize, Option<usize>)> {
     if let Some((method, bytecode_index)) =
         object_class.get_method_and_bytecode_index(method_name, method_descriptor)
     {

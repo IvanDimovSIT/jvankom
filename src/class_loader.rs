@@ -26,6 +26,7 @@ pub enum ClassSource {
 pub struct LoadedClass {
     pub class: Rc<ClassFile>,
     pub is_initialised: bool,
+    pub object_instantiation_index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +108,7 @@ impl ClassLoader {
         let loaded_class = LoadedClass {
             class,
             is_initialised: false,
+            object_instantiation_index: None,
         };
         self.loaded_classes
             .insert(class_name.to_owned(), loaded_class.clone());
@@ -118,6 +120,16 @@ impl ClassLoader {
         if let Some(loaded_class) = self.loaded_classes.get_mut(class_name) {
             debug_assert!(!loaded_class.is_initialised);
             loaded_class.is_initialised = true;
+        } else {
+            panic!("Class should have been initialised");
+        }
+    }
+
+    pub fn set_object_instantiation_index(&mut self, class_name: &str, index: usize) {
+        if let Some(loaded_class) = self.loaded_classes.get_mut(class_name) {
+            debug_assert!(loaded_class.is_initialised);
+            debug_assert!(loaded_class.object_instantiation_index.is_none());
+            loaded_class.object_instantiation_index = Some(index);
         } else {
             panic!("Class should have been initialised");
         }

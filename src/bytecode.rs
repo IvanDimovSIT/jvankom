@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 
 use crate::{
-    bytecode::stack_instructions::pop_instruction,
+    bytecode::stack_instructions::{dup_instruction, pop_instruction},
     class_file::Bytecode,
     jvm_model::{HeapObject, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmType, JvmValue},
 };
@@ -56,6 +56,7 @@ pub const ASTORE_2: u8 = 0x4d;
 pub const ASTORE_3: u8 = 0x4e;
 pub const IASTORE: u8 = 0x4f;
 pub const POP: u8 = 0x57;
+pub const DUP: u8 = 0x59;
 pub const IADD: u8 = 0x60;
 pub const ISUB: u8 = 0x64;
 pub const IMUL: u8 = 0x68;
@@ -120,6 +121,7 @@ impl BytecodeTable {
             (ASTORE_3, store_reference_instruction::<3>),
             (IASTORE, store_integer_array_instruction),
             (POP, pop_instruction),
+            (DUP, dup_instruction),
             (IRETURN, integer_return_instruction),
             (ARETURN, object_return_instruction),
             (RETURN, return_instruction),

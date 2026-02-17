@@ -8,8 +8,8 @@ use std::{
 
 use crate::{
     class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
-    method_call_cache::MethodCallCache, object_instantiation_cache::ObjectInstantiationCache,
-    verifier::VerifierError,
+    method_call_cache::MethodCallCache, native_method_resolver::NativeMethodResolver,
+    object_instantiation_cache::ClassFieldCache, verifier::VerifierError,
 };
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
@@ -100,6 +100,15 @@ pub enum JvmError {
         method_name: String,
         method_descriptor: String,
     },
+    ExpectedNonNativeMethod {
+        method_name: String,
+        method_descriptor: String,
+    },
+    NativeMethodImplementationNotFound {
+        class_name: String,
+        method_name: String,
+        method_descriptor: String,
+    },
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -161,6 +170,21 @@ impl Display for JvmError {
                 method_descriptor,
             } => {
                 format!("Error calling virtual method: {method_name}{method_descriptor}")
+            }
+            JvmError::ExpectedNonNativeMethod {
+                method_name,
+                method_descriptor,
+            } => {
+                format!("Expected method to not be native: {method_name}{method_descriptor}")
+            }
+            JvmError::NativeMethodImplementationNotFound {
+                class_name,
+                method_name,
+                method_descriptor,
+            } => {
+                format!(
+                    "Native method implementation not found for: {class_name}.{method_name}{method_descriptor}"
+                )
             }
         };
 
@@ -338,13 +362,13 @@ impl JvmThread {
 #[derive(Debug)]
 pub struct JvmCache {
     pub method_call_cache: MethodCallCache,
-    pub object_instantiation_cache: ObjectInstantiationCache,
+    pub object_instantiation_cache: ClassFieldCache,
 }
 impl JvmCache {
     pub fn new() -> Self {
         Self {
             method_call_cache: MethodCallCache::new(),
-            object_instantiation_cache: ObjectInstantiationCache::new(),
+            object_instantiation_cache: ClassFieldCache::new(),
         }
     }
 }
@@ -355,6 +379,7 @@ pub struct JvmContext<'a> {
     pub current_thread: &'a mut JvmThread,
     pub heap: &'a mut JvmHeap,
     pub cache: &'a mut JvmCache,
+    pub native_method_resolver: &'a mut NativeMethodResolver,
 }
 
 #[derive(Debug, Clone)]

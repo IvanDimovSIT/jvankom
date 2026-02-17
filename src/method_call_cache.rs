@@ -38,7 +38,7 @@ impl From<StaticMethodCallInfo> for StaticMethodInfoKey {
 pub struct StaticMethodCallInfo {
     pub class: Rc<ClassFile>,
     pub method_index: usize,
-    pub bytecode_index: usize,
+    pub bytecode_index: Option<usize>,
     /// list of types in stack pop order (reversed)
     pub parameter_list: Vec<DescriptorType>,
 }
@@ -65,7 +65,7 @@ impl VirtualMethodCallKey {
 
 #[derive(Debug)]
 pub struct VirtualMethodCallInfo {
-    pub bytecode_index: usize,
+    pub bytecode_index: Option<usize>,
     pub method_index: usize,
     pub resolved_class: Rc<ClassFile>,
     pub types: Vec<DescriptorType>,
@@ -135,7 +135,8 @@ impl MethodCallCache {
         let info_identity_key = StaticMethodInfoKey::from(static_method_call_info.clone());
 
         if let Some(info_index) = self.static_method_info_identity.get(&info_identity_key) {
-            let _ignored_result = self.static_method_cache.insert(caller_key, *info_index);
+            let ignored_result = self.static_method_cache.insert(caller_key, *info_index);
+            debug_assert!(ignored_result.is_none());
         } else {
             let info_index = self.static_method_infos.len();
             self.static_method_infos.push(static_method_call_info);
@@ -153,8 +154,10 @@ impl MethodCallCache {
         virtual_method_call_info: VirtualMethodCallInfo,
     ) {
         let key = VirtualMethodCallKey::new(object_class, method_name, method_descriptor);
-        self.virtual_method_cache
+        let ignored_result = self
+            .virtual_method_cache
             .insert(key, virtual_method_call_info);
+        debug_assert!(ignored_result.is_none());
     }
 
     #[cfg(debug_assertions)]
