@@ -2,7 +2,10 @@
 use std::cell::Cell;
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{class_file::ClassFile, jvm_model::DescriptorType};
+use crate::{
+    class_file::ClassFile,
+    jvm_model::{DescriptorType, JvmClass},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct StaticMethodCallKey {
@@ -10,7 +13,7 @@ struct StaticMethodCallKey {
     caller_ptr: usize,
 }
 impl StaticMethodCallKey {
-    fn new(caller: &Rc<ClassFile>, method_ref_index: u16) -> Self {
+    fn new(caller: &Rc<JvmClass>, method_ref_index: u16) -> Self {
         Self {
             method_ref_index,
             caller_ptr: Rc::as_ptr(caller) as usize,
@@ -36,7 +39,7 @@ impl From<StaticMethodCallInfo> for StaticMethodInfoKey {
 
 #[derive(Debug, Clone)]
 pub struct StaticMethodCallInfo {
-    pub class: Rc<ClassFile>,
+    pub class: Rc<JvmClass>,
     pub method_index: usize,
     pub bytecode_index: Option<usize>,
     /// list of types in stack pop order (reversed)
@@ -51,7 +54,7 @@ struct VirtualMethodCallKey {
 }
 impl VirtualMethodCallKey {
     fn new(
-        object_class: &Rc<ClassFile>,
+        object_class: &Rc<JvmClass>,
         method_name: impl Into<String>,
         method_descriptor: impl Into<String>,
     ) -> Self {
@@ -95,7 +98,7 @@ impl MethodCallCache {
 
     pub fn get_static_call_info(
         &self,
-        caller_class: &Rc<ClassFile>,
+        caller_class: &Rc<JvmClass>,
         method_ref_index: u16,
     ) -> Option<&StaticMethodCallInfo> {
         let key = StaticMethodCallKey::new(caller_class, method_ref_index);
@@ -110,7 +113,7 @@ impl MethodCallCache {
 
     pub fn get_virtual_call_info(
         &self,
-        object_class: &Rc<ClassFile>,
+        object_class: &Rc<JvmClass>,
         method_name: &str,
         method_descriptor: &str,
     ) -> Option<&VirtualMethodCallInfo> {
@@ -129,7 +132,7 @@ impl MethodCallCache {
         &mut self,
         static_method_call_info: StaticMethodCallInfo,
         method_ref_index: u16,
-        caller_class: &Rc<ClassFile>,
+        caller_class: &Rc<JvmClass>,
     ) {
         let caller_key = StaticMethodCallKey::new(caller_class, method_ref_index);
         let info_identity_key = StaticMethodInfoKey::from(static_method_call_info.clone());
@@ -148,7 +151,7 @@ impl MethodCallCache {
 
     pub fn register_virtual_call_info(
         &mut self,
-        object_class: &Rc<ClassFile>,
+        object_class: &Rc<JvmClass>,
         method_name: &str,
         method_descriptor: &str,
         virtual_method_call_info: VirtualMethodCallInfo,

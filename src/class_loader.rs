@@ -12,7 +12,7 @@ use zip::ZipArchive;
 use crate::{
     class_file::ClassFile,
     class_parser::{self, ClassParserError, UnverifiedClassFile},
-    jvm_model::{HeapObject, JvmError, JvmResult},
+    jvm_model::{JvmClass, JvmError, JvmResult},
     verifier,
 };
 
@@ -20,13 +20,6 @@ use crate::{
 pub enum ClassSource {
     Directory(String),
     Jar(String),
-}
-
-#[derive(Debug, Clone)]
-pub struct LoadedClass {
-    pub class: Rc<ClassFile>,
-    pub is_initialised: bool,
-    pub object_instantiation_index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,7 +43,7 @@ impl Error for ClassLoaderError {}
 
 #[derive(Debug)]
 pub struct ClassLoader {
-    loaded_classes: HashMap<String, LoadedClass>,
+    loaded_classes: HashMap<String, Rc<JvmClass>>,
     jars: Vec<ZipArchive<File>>,
     directories: Vec<String>,
 }
@@ -98,44 +91,21 @@ impl ClassLoader {
         self.loaded_classes.len()
     }
 
-    pub fn get(&mut self, class_name: &str) -> JvmResult<LoadedClass> {
+    pub fn get(&mut self, class_name: &str) -> JvmResult<Rc<JvmClass>> {
         let initialised_class = self.loaded_classes.get(class_name);
         if let Some(class) = initialised_class {
             return Ok(class.clone());
         }
 
         let class = self.find_class_file(class_name)?;
-        let loaded_class = LoadedClass {
-            class,
-            is_initialised: false,
-            object_instantiation_index: None,
-        };
+
         self.loaded_classes
-            .insert(class_name.to_owned(), loaded_class.clone());
+            .insert(class_name.to_owned(), class.clone());
 
-        Ok(loaded_class)
+        Ok(class)
     }
 
-    pub fn mark_as_loaded(&mut self, class_name: &str) {
-        if let Some(loaded_class) = self.loaded_classes.get_mut(class_name) {
-            debug_assert!(!loaded_class.is_initialised);
-            loaded_class.is_initialised = true;
-        } else {
-            panic!("Class should have been initialised");
-        }
-    }
-
-    pub fn set_object_instantiation_index(&mut self, class_name: &str, index: usize) {
-        if let Some(loaded_class) = self.loaded_classes.get_mut(class_name) {
-            debug_assert!(loaded_class.is_initialised);
-            debug_assert!(loaded_class.object_instantiation_index.is_none());
-            loaded_class.object_instantiation_index = Some(index);
-        } else {
-            panic!("Class should have been initialised");
-        }
-    }
-
-    fn find_class_file(&mut self, class_name: &str) -> JvmResult<Rc<ClassFile>> {
+    fn find_class_file(&mut self, class_name: &str) -> JvmResult<Rc<JvmClass>> {
         for jar in &mut self.jars {
             if let Ok(mut file) = jar.by_name(&format!("{class_name}.class")) {
                 let mut data = Vec::with_capacity(1024);
@@ -182,9 +152,9 @@ impl ClassLoader {
     fn handle_parse_result(
         class_result: Result<UnverifiedClassFile, ClassParserError>,
         class_name: &str,
-    ) -> JvmResult<Option<Rc<ClassFile>>> {
+    ) -> JvmResult<Option<Rc<JvmClass>>> {
         match class_result {
-            Ok(class) => Self::verify(class, class_name).map(|c| Option::Some(Rc::new(c))),
+            Ok(class) => Self::verify(class, class_name).map(|c| Some(JvmClass::new(c))),
             Err(ClassParserError::ErrorReadingFile(_)) => Ok(None),
             Err(error) => Err(JvmError::ClassParserError {
                 parsed_class: class_name.to_owned(),
@@ -209,9 +179,9 @@ mod tests {
             ClassLoader::new(vec![ClassSource::Directory("test_classes".to_owned())]).unwrap();
 
         let loaded_class = class_loader.get("Test").unwrap();
-        assert!(!loaded_class.is_initialised);
+        assert!(!loaded_class.state.borrow().is_initialised);
         assert_eq!(1, class_loader.get_loaded_count());
-        assert_eq!("Test", loaded_class.class.get_class_name().unwrap());
+        assert_eq!("Test", loaded_class.class_file.get_class_name().unwrap());
     }
 
     #[test]
@@ -222,11 +192,11 @@ mod tests {
         .unwrap();
 
         let loaded_class = class_loader.get("CrossCall2Test").unwrap();
-        assert!(!loaded_class.is_initialised);
+        assert!(!loaded_class.state.borrow().is_initialised);
         assert_eq!(1, class_loader.get_loaded_count());
         assert_eq!(
             "CrossCall2Test",
-            loaded_class.class.get_class_name().unwrap()
+            loaded_class.class_file.get_class_name().unwrap()
         );
     }
 

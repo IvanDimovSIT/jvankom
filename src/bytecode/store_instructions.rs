@@ -30,7 +30,8 @@ pub fn store_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
 
 pub fn store_reference_n_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+    let bytecode =
+        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     let index_value = bytecode.code[frame.program_counter] as usize;
     frame.program_counter += 1;
 
@@ -53,7 +54,8 @@ pub fn store_reference_instruction<const INDEX: usize>(context: JvmContext) -> J
 
 pub fn store_integer_n_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+    let bytecode =
+        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     let index_value = bytecode.code[frame.program_counter] as usize;
     frame.program_counter += 1;
 

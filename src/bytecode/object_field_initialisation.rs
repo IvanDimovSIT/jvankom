@@ -1,13 +1,13 @@
 use std::rc::Rc;
 
 use crate::{
-    class_file::{ClassFile, FieldAccessFlags},
+    class_file::FieldAccessFlags,
     class_loader::ClassLoader,
-    jvm_model::{DescriptorType, FieldInfo, HeapObject, JvmResult},
+    jvm_model::{DescriptorType, FieldInfo, HeapObject, JvmClass, JvmResult},
 };
 
 /// initialises an object with all it's fields
-pub fn initialise_object_fields(class: Rc<ClassFile>, field_infos: &[FieldInfo]) -> HeapObject {
+pub fn initialise_object_fields(class: Rc<JvmClass>, field_infos: &[FieldInfo]) -> HeapObject {
     let mut fields = Vec::with_capacity(field_infos.len());
     for field_info in field_infos {
         fields.push(field_info.descriptor_type.create_default_value());
@@ -16,29 +16,32 @@ pub fn initialise_object_fields(class: Rc<ClassFile>, field_infos: &[FieldInfo])
     HeapObject::Object { class, fields }
 }
 
-pub fn determine_field_types(
-    class: &ClassFile,
+pub fn determine_non_static_field_types(
+    class: &Rc<JvmClass>,
     class_loader: &mut ClassLoader,
 ) -> JvmResult<Vec<FieldInfo>> {
     let mut field_infos = vec![];
 
-    for f in &class.fields {
+    for f in &class.class_file.fields {
         if f.access_flags.check_flag(FieldAccessFlags::STATIC_FLAG) {
             continue;
         }
 
         let descriptor = class
+            .class_file
             .constant_pool
             .get_utf8(f.descriptor_index)
             .expect("Invalid descriptor index");
 
         let field_name = class
+            .class_file
             .constant_pool
             .get_utf8(f.name_index)
             .expect("Expected field name")
             .to_owned();
 
         let class_name = class
+            .class_file
             .get_class_name()
             .expect("Expected class name")
             .to_owned();
@@ -52,11 +55,16 @@ pub fn determine_field_types(
         field_infos.push(field_info);
     }
 
-    if let Some(super_class_name) = class.get_super_class_name()
+    if let Some(super_class_name) = class.class_file.get_super_class_name()
         && super_class_name != "java/lang/Object"
     {
-        let super_class = class_loader.get(super_class_name)?;
-        let super_types = determine_field_types(&super_class.class, class_loader)?;
+        let super_class = class
+            .state
+            .borrow()
+            .super_class
+            .clone()
+            .expect("Class should be initialised");
+        let super_types = determine_non_static_field_types(&super_class, class_loader)?;
         field_infos.extend(super_types);
     }
 
