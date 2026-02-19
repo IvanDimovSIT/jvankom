@@ -1,5 +1,3 @@
-use std::num::NonZeroUsize;
-
 use crate::{
     bytecode::{pop_int, pop_long, pop_reference},
     jvm_model::{DescriptorType, JvmError, JvmResult, JvmStackFrame, JvmValue},
@@ -50,37 +48,23 @@ pub fn parse_descriptor(method_descriptor: &str) -> JvmResult<Vec<DescriptorType
     Ok(types)
 }
 
-/// types need to be in pop order (reversed)
-pub fn pop_params_for_virtual(
-    object_ref: NonZeroUsize,
-    types: &[DescriptorType],
-    frame: &mut JvmStackFrame,
-) -> JvmResult<Vec<JvmValue>> {
-    let mut params = Vec::with_capacity(types.len() + 1);
-    params.push(JvmValue::Reference(Some(object_ref)));
-    params.extend(pop_params(types, frame)?);
-
-    Ok(params)
-}
-
 pub fn pop_params_for_special(
     types: &[DescriptorType],
     frame: &mut JvmStackFrame,
 ) -> JvmResult<Vec<JvmValue>> {
-    let mut params = Vec::with_capacity(types.len() + 1);
+    let mut params = pop_params(types, frame)?;
     let reference = pop_reference(frame)?;
     if reference.is_none() {
         todo!("Throw NullPointerException")
     }
-    params.push(JvmValue::Reference(reference));
-    params.extend(pop_params(types, frame)?);
+    params.insert(0, JvmValue::Reference(reference));
 
     Ok(params)
 }
 
 /// types need to be in pop order (reversed)
 pub fn pop_params(types: &[DescriptorType], frame: &mut JvmStackFrame) -> JvmResult<Vec<JvmValue>> {
-    let mut params = Vec::with_capacity(4);
+    let mut params = Vec::with_capacity(types.len() + 1);
 
     for t in types {
         match *t {

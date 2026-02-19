@@ -12,7 +12,6 @@ mod jvm;
 mod jvm_model;
 mod method_call_cache;
 mod native_method_resolver;
-mod object_instantiation_cache;
 mod verifier;
 
 fn main() {
@@ -23,15 +22,15 @@ fn main() {
 
     let class_loader = ClassLoader::new(vec![
         ClassSource::Jar("java_libraries/rt.jar".to_owned()),
-        ClassSource::Directory("test_classes".to_owned()),
+        ClassSource::Jar("test_classes/VirtualCallTest.jar".to_owned()),
     ])
     .unwrap();
     let mut jvm = JVM::new(class_loader);
     let result = jvm.run(
-        "ObjectTest".to_owned(),
-        "callInstanceMethod".to_owned(),
-        "(I)I".to_owned(),
-        vec![JvmValue::Int(10)],
+        "VirtualCall1Test".to_owned(),
+        "mainCallSelf".to_owned(),
+        "(I)[I".to_owned(),
+        vec![JvmValue::Int(5)],
     );
 
     if let Err(err) = result {

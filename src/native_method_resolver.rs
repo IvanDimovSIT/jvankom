@@ -1,8 +1,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    class_file::ClassFile,
-    jvm_model::{JvmError, JvmHeap, JvmResult, JvmThread, JvmValue},
+    jvm_model::{JvmClass, JvmError, JvmHeap, JvmResult, JvmThread, JvmValue},
     native_method_resolver::object_methods::{object_constructor, register_natives},
 };
 
@@ -33,7 +32,7 @@ struct NativeMethodCallKey {
     method_index: usize,
 }
 impl NativeMethodCallKey {
-    pub fn new(class: &Rc<ClassFile>, method_index: usize) -> Self {
+    pub fn new(class: &Rc<JvmClass>, method_index: usize) -> Self {
         Self {
             class_ptr: Rc::as_ptr(class) as usize,
             method_index,
@@ -75,7 +74,7 @@ impl NativeMethodResolver {
         heap: &mut JvmHeap,
         params: Vec<JvmValue>,
         method_index: usize,
-        class: Rc<ClassFile>,
+        class: Rc<JvmClass>,
     ) -> JvmResult<()> {
         let call_key = NativeMethodCallKey::new(&class, method_index);
         if let Some(index) = self.call_map.get(&call_key) {
@@ -83,17 +82,19 @@ impl NativeMethodResolver {
         }
 
         let method_name = class
+            .class_file
             .constant_pool
-            .get_utf8(class.methods[method_index].name_index)
+            .get_utf8(class.class_file.methods[method_index].name_index)
             .expect("Expected method name")
             .to_owned();
         let descriptor = class
+            .class_file
             .constant_pool
-            .get_utf8(class.methods[method_index].descriptor_index)
+            .get_utf8(class.class_file.methods[method_index].descriptor_index)
             .expect("Expected method descriptor")
             .to_owned();
         let name_key = NativeMethodNameKey {
-            class_name: class.get_class_name().unwrap().to_owned(),
+            class_name: class.class_file.get_class_name().unwrap().to_owned(),
             method_name,
             descriptor,
         };

@@ -1,15 +1,11 @@
 use std::{
-    collections::HashMap,
-    error::Error,
-    fmt::{Display, format},
-    num::NonZeroUsize,
-    rc::Rc,
+    cell::RefCell, collections::HashMap, error::Error, fmt::Display, num::NonZeroUsize, rc::Rc,
 };
 
 use crate::{
     class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
     method_call_cache::MethodCallCache, native_method_resolver::NativeMethodResolver,
-    object_instantiation_cache::ClassFieldCache, verifier::VerifierError,
+    verifier::VerifierError,
 };
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
@@ -219,7 +215,7 @@ impl JvmValue {
 #[derive(Debug, Clone)]
 pub enum HeapObject {
     Object {
-        class: Rc<ClassFile>,
+        class: Rc<JvmClass>,
         fields: Vec<JvmValue>,
     },
     IntArray(Vec<i32>),
@@ -238,7 +234,7 @@ impl HeapObject {
             HeapObject::Object {
                 class,
                 fields: _fields,
-            } => class.get_super_class_name(),
+            } => class.class_file.get_super_class_name(),
             _ => Some("java/lang/Object"),
         }
     }
@@ -273,7 +269,7 @@ impl JvmHeap {
 
 #[derive(Debug, Clone)]
 pub struct JvmStackFrame {
-    pub class: Rc<ClassFile>,
+    pub class: Rc<JvmClass>,
     pub method_index: usize,
     pub bytecode_index: usize,
     pub local_variables: Vec<JvmValue>,
@@ -285,18 +281,19 @@ pub struct JvmStackFrame {
 }
 impl JvmStackFrame {
     pub fn new(
-        class: Rc<ClassFile>,
+        class: Rc<JvmClass>,
         method_index: usize,
         bytecode_index: usize,
         params: Vec<JvmValue>,
     ) -> Self {
-        let method = &class.methods[method_index];
+        let method = &class.class_file.methods[method_index];
         let bytecode = method.get_bytecode(bytecode_index);
         let operand_stack = Vec::with_capacity(bytecode.max_stack as usize);
         let mut local_variables = vec![JvmValue::Unusable; bytecode.max_locals as usize];
         debug_assert!(params.len() <= bytecode.max_locals as usize);
         local_variables[..params.len()].copy_from_slice(&params[..]);
         let descriptor = class
+            .class_file
             .constant_pool
             .get_utf8(method.descriptor_index)
             .expect("Expected descriptor value");
@@ -317,7 +314,7 @@ impl JvmStackFrame {
 
     pub fn debug_print(&self) {
         let program_counter = self.program_counter;
-        let bytecode = &self.class.methods[self.method_index]
+        let bytecode = &self.class.class_file.methods[self.method_index]
             .get_bytecode(self.bytecode_index)
             .code;
         let stack = &self.operand_stack;
@@ -362,13 +359,11 @@ impl JvmThread {
 #[derive(Debug)]
 pub struct JvmCache {
     pub method_call_cache: MethodCallCache,
-    pub object_instantiation_cache: ClassFieldCache,
 }
 impl JvmCache {
     pub fn new() -> Self {
         Self {
             method_call_cache: MethodCallCache::new(),
-            object_instantiation_cache: ClassFieldCache::new(),
         }
     }
 }
@@ -387,4 +382,36 @@ pub struct FieldInfo {
     pub name: String,
     pub class: String,
     pub descriptor_type: DescriptorType,
+}
+
+#[derive(Debug)]
+pub struct JvmClass {
+    pub class_file: ClassFile,
+    pub state: RefCell<ClassState>,
+}
+impl JvmClass {
+    pub fn new(class_file: ClassFile) -> Rc<Self> {
+        Rc::new(Self {
+            class_file,
+            state: RefCell::new(ClassState::default()),
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct ClassState {
+    pub is_initialised: bool,
+    pub non_static_fields: Option<Vec<FieldInfo>>,
+    pub default_object: Option<HeapObject>,
+    pub super_class: Option<Rc<JvmClass>>,
+}
+impl Default for ClassState {
+    fn default() -> Self {
+        Self {
+            is_initialised: false,
+            non_static_fields: None,
+            default_object: None,
+            super_class: None,
+        }
+    }
 }

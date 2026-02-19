@@ -2,7 +2,6 @@ use std::num::NonZeroUsize;
 
 use crate::{
     bytecode::stack_instructions::{dup_instruction, pop_instruction},
-    class_file::Bytecode,
     jvm_model::{HeapObject, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmType, JvmValue},
 };
 
@@ -33,6 +32,7 @@ pub const ICONST_3: u8 = 0x6;
 pub const ICONST_4: u8 = 0x7;
 pub const ICONST_5: u8 = 0x8;
 pub const BIPUSH: u8 = 0x10;
+pub const SIPUSH: u8 = 0x11;
 pub const ILOAD: u8 = 0x15;
 pub const ALOAD: u8 = 0x19;
 pub const ILOAD_0: u8 = 0x1a;
@@ -92,6 +92,7 @@ impl BytecodeTable {
             (ICONST_4, integer_const_instruction::<4>),
             (ICONST_5, integer_const_instruction::<5>),
             (BIPUSH, bipush_instruction),
+            (SIPUSH, sipush_instruction),
             (ILOAD, integer_load_n),
             (ALOAD, reference_load_n),
             (ILOAD_0, integer_load::<0>),
@@ -152,7 +153,8 @@ impl BytecodeTable {
 
 fn handle_unrecognised_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+    let bytecode =
+        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     assert!(frame.program_counter > 0);
     let previous_index = frame.program_counter.saturating_sub(1);
     let unrecognised_bytecode = bytecode.code[previous_index];
@@ -168,7 +170,8 @@ fn handle_unrecognised_instruction(context: JvmContext) -> JvmResult<()> {
 /// read u16 from 2 bytecode values (moves PC forward by 2)
 #[inline]
 fn read_u16_from_bytecode(frame: &mut JvmStackFrame) -> u16 {
-    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+    let bytecode =
+        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
 
     let index_byte1 = bytecode.code[frame.program_counter] as u16;
     frame.program_counter += 1;

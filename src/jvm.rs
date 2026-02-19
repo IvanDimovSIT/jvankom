@@ -1,8 +1,11 @@
+use std::rc::Rc;
+
 use crate::{
     bytecode::BYTECODE_TABLE,
-    class_loader::{ClassLoader, LoadedClass},
+    class_loader::ClassLoader,
     jvm_model::{
-        JvmCache, JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread, JvmValue,
+        JvmCache, JvmClass, JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread,
+        JvmValue,
     },
     native_method_resolver::NativeMethodResolver,
 };
@@ -28,29 +31,33 @@ impl JVM {
     /// calls <clinit> method on class and super classes if it hasn't been called
     pub fn initialise_class(
         thread: &mut JvmThread,
-        loaded_class: &LoadedClass,
+        loaded_class: &Rc<JvmClass>,
         class_loader: &mut ClassLoader,
         class_name: &str,
     ) -> JvmResult<()> {
         const INITIALISE_CLASS_METHOD: &str = "<clinit>";
         const INITIALISE_CLASS_DESCIPTOR: &str = "()V";
-        if loaded_class.is_initialised {
+        if loaded_class.state.borrow().is_initialised {
             return Ok(());
         }
 
         let (method_index, bytecode_index) = if let Some((m_index, b_index)) = loaded_class
-            .class
+            .class_file
             .get_method_and_bytecode_index(INITIALISE_CLASS_METHOD, INITIALISE_CLASS_DESCIPTOR)
         {
             (m_index, b_index)
         } else {
-            class_loader.mark_as_loaded(class_name);
-            return Ok(());
+            return Self::mark_as_loaded_and_recurse_load(
+                thread,
+                loaded_class,
+                class_loader,
+                class_name,
+            );
         };
 
         if let Some(bytecode_index) = bytecode_index {
             thread.push(JvmStackFrame::new(
-                loaded_class.class.clone(),
+                loaded_class.clone(),
                 method_index,
                 bytecode_index,
                 vec![],
@@ -62,11 +69,22 @@ impl JVM {
             }
             .bx());
         }
-        class_loader.mark_as_loaded(class_name);
+
+        Self::mark_as_loaded_and_recurse_load(thread, loaded_class, class_loader, class_name)
+    }
+
+    fn mark_as_loaded_and_recurse_load(
+        thread: &mut JvmThread,
+        loaded_class: &Rc<JvmClass>,
+        class_loader: &mut ClassLoader,
+        class_name: &str,
+    ) -> JvmResult<()> {
+        loaded_class.state.borrow_mut().is_initialised = true;
 
         // recusrively load super classes
-        if let Some(super_class_name) = loaded_class.class.get_super_class_name() {
+        if let Some(super_class_name) = loaded_class.class_file.get_super_class_name() {
             let super_class = class_loader.get(super_class_name)?;
+            loaded_class.state.borrow_mut().super_class = Some(super_class.clone());
             return Self::initialise_class(thread, &super_class, class_loader, class_name);
         }
 
@@ -87,7 +105,7 @@ impl JVM {
         let loaded_class = self.class_loader.get(&class_name)?;
 
         let (method_index, bytecode_index) = if let Some(index) = loaded_class
-            .class
+            .class_file
             .get_method_and_bytecode_index(&method_name, &method_descriptor)
         {
             index
@@ -109,7 +127,7 @@ impl JVM {
 
         let mut thread = JvmThread::new();
         let stack_frame = JvmStackFrame::new(
-            loaded_class.class.clone(),
+            loaded_class.clone(),
             method_index,
             bytecode_index.unwrap(),
             params,
@@ -132,7 +150,7 @@ impl JVM {
 
         while let Some(frame) = current_thread.peek() {
             let instruction = {
-                let method = &frame.class.methods[frame.method_index];
+                let method = &frame.class.class_file.methods[frame.method_index];
                 let bytecode = method.get_bytecode(frame.bytecode_index);
                 if frame.should_return {
                     if frame.is_void {
@@ -185,7 +203,7 @@ impl JVM {
 
 #[cfg(test)]
 mod tests {
-    use crate::class_loader::ClassSource;
+    use crate::{class_loader::ClassSource, jvm_model::HeapObject};
 
     use super::*;
 
@@ -380,7 +398,97 @@ mod tests {
         }
 
         assert_eq!(2, jvm.cache.method_call_cache.get_cache_hits());
-        assert_eq!(2, jvm.class_loader.get_loaded_count());
+        assert_eq!(3, jvm.class_loader.get_loaded_count());
+    }
+
+    #[test]
+    fn test_virtual_call_self() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/VirtualCallTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "VirtualCall1Test".to_owned(),
+                "mainCallSelf".to_owned(),
+                "(I)[I".to_owned(),
+                vec![JvmValue::Int(5)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref).unwrap() {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(2, array.len());
+        assert_eq!(6, array[0]);
+        assert_eq!(7, array[1]);
+        assert_eq!(3, jvm.class_loader.get_loaded_count());
+    }
+
+    #[test]
+    fn test_virtual_call_other() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/VirtualCallTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "VirtualCall1Test".to_owned(),
+                "mainCallOther".to_owned(),
+                "(I)[I".to_owned(),
+                vec![JvmValue::Int(5)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref).unwrap() {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(2, array.len());
+        assert_eq!(105, array[0]);
+        assert_eq!(205, array[1]);
+        assert_eq!(4, jvm.class_loader.get_loaded_count());
+    }
+
+    #[test]
+    fn test_virtual_call_abstract() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/VirtualCallTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "VirtualCall1Test".to_owned(),
+                "mainCallAbstract".to_owned(),
+                "(I)[I".to_owned(),
+                vec![JvmValue::Int(5)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref).unwrap() {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(2, array.len());
+        assert_eq!(5000, array[0]);
+        assert_eq!(5000000, array[1]);
+        assert_eq!(4, jvm.class_loader.get_loaded_count());
     }
 
     fn test_single_class_static_method_calls_helper(
@@ -405,7 +513,8 @@ mod tests {
         assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
     }
 
-    fn create_jvm(contexts: Vec<ClassSource>) -> JVM {
+    fn create_jvm(mut contexts: Vec<ClassSource>) -> JVM {
+        contexts.push(ClassSource::Jar("java_libraries/rt.jar".to_owned()));
         let class_loader = ClassLoader::new(contexts).unwrap();
         JVM::new(class_loader)
     }

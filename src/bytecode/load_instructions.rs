@@ -2,7 +2,8 @@ use super::*;
 
 pub fn integer_load_n(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+    let bytecode =
+        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     let index_value = bytecode.code[frame.program_counter] as usize;
     frame.program_counter += 1;
 
@@ -44,7 +45,8 @@ pub fn reference_load_instruction<const INDEX: usize>(context: JvmContext) -> Jv
 
 pub fn reference_load_n(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode = frame.class.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+    let bytecode =
+        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     let index_value = bytecode.code[frame.program_counter] as usize;
     frame.program_counter += 1;
 
