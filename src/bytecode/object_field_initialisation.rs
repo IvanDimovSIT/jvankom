@@ -55,9 +55,7 @@ pub fn determine_non_static_field_types(
         field_infos.push(field_info);
     }
 
-    if let Some(super_class_name) = class.class_file.get_super_class_name()
-        && super_class_name != "java/lang/Object"
-    {
+    if class.class_file.super_class_index.is_some() {
         let super_class = class
             .state
             .borrow()

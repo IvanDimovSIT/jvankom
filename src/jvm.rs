@@ -203,7 +203,7 @@ impl JVM {
 
 #[cfg(test)]
 mod tests {
-    use crate::class_loader::ClassSource;
+    use crate::{class_loader::ClassSource, jvm_model::HeapObject};
 
     use super::*;
 
@@ -399,6 +399,96 @@ mod tests {
 
         assert_eq!(2, jvm.cache.method_call_cache.get_cache_hits());
         assert_eq!(3, jvm.class_loader.get_loaded_count());
+    }
+
+    #[test]
+    fn test_virtual_call_self() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/VirtualCallTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "VirtualCall1Test".to_owned(),
+                "mainCallSelf".to_owned(),
+                "(I)[I".to_owned(),
+                vec![JvmValue::Int(5)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref).unwrap() {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(2, array.len());
+        assert_eq!(6, array[0]);
+        assert_eq!(7, array[1]);
+        assert_eq!(3, jvm.class_loader.get_loaded_count());
+    }
+
+    #[test]
+    fn test_virtual_call_other() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/VirtualCallTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "VirtualCall1Test".to_owned(),
+                "mainCallOther".to_owned(),
+                "(I)[I".to_owned(),
+                vec![JvmValue::Int(5)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref).unwrap() {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(2, array.len());
+        assert_eq!(105, array[0]);
+        assert_eq!(205, array[1]);
+        assert_eq!(4, jvm.class_loader.get_loaded_count());
+    }
+
+    #[test]
+    fn test_virtual_call_abstract() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/VirtualCallTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "VirtualCall1Test".to_owned(),
+                "mainCallAbstract".to_owned(),
+                "(I)[I".to_owned(),
+                vec![JvmValue::Int(5)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref).unwrap() {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(2, array.len());
+        assert_eq!(5000, array[0]);
+        assert_eq!(5000000, array[1]);
+        assert_eq!(4, jvm.class_loader.get_loaded_count());
     }
 
     fn test_single_class_static_method_calls_helper(

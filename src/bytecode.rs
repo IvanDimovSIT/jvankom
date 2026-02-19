@@ -32,6 +32,7 @@ pub const ICONST_3: u8 = 0x6;
 pub const ICONST_4: u8 = 0x7;
 pub const ICONST_5: u8 = 0x8;
 pub const BIPUSH: u8 = 0x10;
+pub const SIPUSH: u8 = 0x11;
 pub const ILOAD: u8 = 0x15;
 pub const ALOAD: u8 = 0x19;
 pub const ILOAD_0: u8 = 0x1a;
@@ -91,6 +92,7 @@ impl BytecodeTable {
             (ICONST_4, integer_const_instruction::<4>),
             (ICONST_5, integer_const_instruction::<5>),
             (BIPUSH, bipush_instruction),
+            (SIPUSH, sipush_instruction),
             (ILOAD, integer_load_n),
             (ALOAD, reference_load_n),
             (ILOAD_0, integer_load::<0>),

@@ -5,9 +5,9 @@ use crate::{
         method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_special},
         object_field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     },
-    class_file::MethodAccessFlags,
+    class_file::{ClassFile, MethodAccessFlags},
     jvm::JVM,
-    jvm_model::DescriptorType,
+    jvm_model::{DescriptorType, JvmClass},
     method_call_cache::StaticMethodCallInfo,
 };
 
@@ -235,189 +235,151 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
-    // let frame = context.current_thread.peek().unwrap();
-    // let unvalidated_cp_index = read_u16_from_bytecode(frame);
-    // let current_class = frame.class.clone();
+    let frame = context.current_thread.peek().unwrap();
+    let unvalidated_cp_index = read_u16_from_bytecode(frame);
+    let current_class = frame.class.clone();
 
-    // let cp_index = validate_cp_index(unvalidated_cp_index)?;
-    // let (class_name, method_name, method_descriptor) = if let Some(called_method) = current_class
-    //     .constant_pool
-    //     .get_class_methodname_descriptor(cp_index)
-    // {
-    //     called_method
-    // } else {
-    //     return Err(JvmError::InvalidMethodRefIndex(cp_index).bx());
-    // };
+    let cp_index = validate_cp_index(unvalidated_cp_index)?;
+    let (class_name, method_name, method_descriptor) = if let Some(called_method) = current_class
+        .class_file
+        .constant_pool
+        .get_class_methodname_descriptor(cp_index)
+    {
+        called_method
+    } else {
+        return Err(JvmError::InvalidMethodRefIndex(cp_index).bx());
+    };
 
-    // let called_class = context.class_loader.get(class_name)?;
+    let called_class = context.class_loader.get(class_name)?;
 
-    // // initialise class and rewind
-    // if !called_class.is_initialised {
-    //     frame.program_counter -= 3;
-    //     JVM::initialise_class(
-    //         context.current_thread,
-    //         &called_class,
-    //         context.class_loader,
-    //         class_name,
-    //     )?;
+    // initialise class and rewind
+    if !called_class.state.borrow().is_initialised {
+        frame.program_counter -= 3;
+        JVM::initialise_class(
+            context.current_thread,
+            &called_class,
+            context.class_loader,
+            class_name,
+        )?;
 
-    //     return Ok(());
-    // }
+        return Ok(());
+    }
 
-    // let object_ref = if let Some(reference) = pop_reference(frame)? {
-    //     reference
-    // } else {
-    //     todo!("Throw NullPointerException");
-    // };
-    // let called_object = context
-    //     .heap
-    //     .get(object_ref)
-    //     .ok_or_else(|| JvmError::InvalidReference.bx())?;
-    // let object_class = match called_object {
-    //     HeapObject::Object { class, fields: _ } => class.clone(),
-    //     _ => context.class_loader.get("java/lang/Object")?.class,
-    // };
+    let param_types = parse_descriptor(method_descriptor)?;
+    let params = pop_params_for_special(&param_types, frame)?;
+    let object_ref = match params[0] {
+        JvmValue::Reference(Some(non_zero)) => non_zero,
+        _ => unreachable!("type and null already checked"),
+    };
+    let called_object = context
+        .heap
+        .get(object_ref)
+        .ok_or_else(|| JvmError::InvalidReference.bx())?;
 
-    // if let Some(info) = context.cache.method_call_cache.get_virtual_call_info(
-    //     &object_class,
-    //     method_name,
-    //     method_descriptor,
-    // ) {
-    //     let called_method = &info.resolved_class.methods[info.method_index];
-    //     if called_method
-    //         .access_flags
-    //         .check_flag(MethodAccessFlags::PRIVATE_FLAG)
-    //         && Rc::as_ptr(&info.resolved_class) != Rc::as_ptr(&frame.class)
-    //     {
-    //         todo!("Throw IllegalAccessError")
-    //     }
-    //     let params = pop_params_for_virtual(object_ref, &info.types, frame)?;
+    let object_class = match called_object {
+        HeapObject::Object { class, fields: _ } => class.clone(),
+        _ => context.class_loader.get("java/lang/Object")?,
+    };
 
-    //     if let Some(bytecode_index) = info.bytecode_index {
-    //         let new_frame = JvmStackFrame::new(
-    //             info.resolved_class.clone(),
-    //             info.method_index,
-    //             bytecode_index,
-    //             params,
-    //         );
+    let (resolved_class, called_method_index, called_bytecode_index) =
+        find_virtual_method(&object_class, method_name, method_descriptor)?;
+    let called_method = &resolved_class.class_file.methods[called_method_index];
+    if called_method
+        .access_flags
+        .check_flag(MethodAccessFlags::STATIC_FLAG)
+    {
+        todo!("Throw IncopatibleClassChangeError")
+    }
+    if called_method
+        .access_flags
+        .check_flag(MethodAccessFlags::PRIVATE_FLAG)
+        && Rc::as_ptr(&resolved_class) != Rc::as_ptr(&frame.class)
+    {
+        todo!("Throw IllegalAccessError")
+    }
 
-    //         context.current_thread.push(new_frame);
-    //     } else {
-    //         return context.native_method_resolver.execute_native_method(
-    //             context.current_thread,
-    //             context.heap,
-    //             params,
-    //             info.method_index,
-    //             info.resolved_class.clone(),
-    //         );
-    //     }
+    if let Some(bytecode_index) = called_bytecode_index {
+        let new_frame =
+            JvmStackFrame::new(resolved_class, called_method_index, bytecode_index, params);
 
-    //     return Ok(());
-    // }
+        context.current_thread.push(new_frame);
+    } else {
+        if !called_method
+            .access_flags
+            .check_flag(MethodAccessFlags::NATIVE_FLAG)
+        {
+            todo!("should be native method")
+        }
 
-    // let (resolved_class, called_method_index, called_bytecode_index) = find_virtual_method(
-    //     &object_class,
-    //     context.class_loader,
-    //     method_name,
-    //     method_descriptor,
-    // )?;
-    // let called_method = &resolved_class.methods[called_method_index];
-    // if called_method
-    //     .access_flags
-    //     .check_flag(MethodAccessFlags::STATIC_FLAG)
-    // {
-    //     todo!("Throw IncopatibleClassChangeError")
-    // }
-    // if called_method
-    //     .access_flags
-    //     .check_flag(MethodAccessFlags::PRIVATE_FLAG)
-    //     && Rc::as_ptr(&resolved_class) != Rc::as_ptr(&frame.class)
-    // {
-    //     todo!("Throw IllegalAccessError")
-    // }
-
-    // let param_types = parse_descriptor(method_descriptor)?;
-    // let virtual_method_call_info = VirtualMethodCallInfo {
-    //     bytecode_index: called_bytecode_index,
-    //     method_index: called_method_index,
-    //     resolved_class: resolved_class.clone(),
-    //     types: param_types.clone(),
-    // };
-    // context.cache.method_call_cache.register_virtual_call_info(
-    //     &object_class,
-    //     method_name,
-    //     method_descriptor,
-    //     virtual_method_call_info,
-    // );
-
-    // let params = pop_params_for_virtual(object_ref, &param_types, frame)?;
-
-    // if let Some(bytecode_index) = called_bytecode_index {
-    //     let new_frame =
-    //         JvmStackFrame::new(resolved_class, called_method_index, bytecode_index, params);
-
-    //     context.current_thread.push(new_frame);
-    // } else {
-    //     if !called_method
-    //         .access_flags
-    //         .check_flag(MethodAccessFlags::NATIVE_FLAG)
-    //     {
-    //         todo!("should be native method")
-    //     }
-
-    //     return context.native_method_resolver.execute_native_method(
-    //         context.current_thread,
-    //         context.heap,
-    //         params,
-    //         called_method_index,
-    //         resolved_class,
-    //     );
-    // }
+        return context.native_method_resolver.execute_native_method(
+            context.current_thread,
+            context.heap,
+            params,
+            called_method_index,
+            resolved_class,
+        );
+    }
 
     Ok(())
 }
 
-/// returns classfile + method index + bytecode index
-// fn find_virtual_method(
-//     object_class: &Rc<ClassFile>,
-//     class_loader: &mut ClassLoader,
-//     method_name: &str,
-//     method_descriptor: &str,
-// ) -> JvmResult<(Rc<ClassFile>, usize, Option<usize>)> {
-//     if let Some((method, bytecode_index)) =
-//         object_class.get_method_and_bytecode_index(method_name, method_descriptor)
-//     {
-//         return Ok((object_class.clone(), method, bytecode_index));
-//     }
+fn check_not_abstract_method(class_file: &ClassFile, method_index: usize) -> bool {
+    !class_file.methods[method_index]
+        .access_flags
+        .check_flag(MethodAccessFlags::ABSTRACT_FLAG)
+}
 
-//     let parent_name = if let Some(parent_name) = object_class.get_super_class_name() {
-//         parent_name
-//     } else {
-//         return Err(construct_virtual_method_error(
-//             method_name,
-//             method_descriptor,
-//         ));
-//     };
-//     let mut parent_class = class_loader.get(parent_name)?.class.clone();
-//     loop {
-//         if let Some((method, bytecode_index)) =
-//             parent_class.get_method_and_bytecode_index(method_name, method_descriptor)
-//         {
-//             return Ok((parent_class, method, bytecode_index));
-//         }
+/// returns class + method index + bytecode index
+fn find_virtual_method(
+    object_class: &Rc<JvmClass>,
+    method_name: &str,
+    method_descriptor: &str,
+) -> JvmResult<(Rc<JvmClass>, usize, Option<usize>)> {
+    if let Some((method, bytecode_index)) = object_class
+        .class_file
+        .get_method_and_bytecode_index(method_name, method_descriptor)
+        && check_not_abstract_method(&object_class.class_file, method)
+    {
+        return Ok((object_class.clone(), method, bytecode_index));
+    }
 
-//         let parent_class_name = if let Some(parent_class_name) = parent_class.get_super_class_name()
-//         {
-//             parent_class_name
-//         } else {
-//             return Err(construct_virtual_method_error(
-//                 method_name,
-//                 method_descriptor,
-//             ));
-//         };
-//         parent_class = class_loader.get(parent_class_name)?.class.clone();
-//     }
-// }
+    if object_class.class_file.super_class_index.is_none() {
+        return Err(construct_virtual_method_error(
+            method_name,
+            method_descriptor,
+        ));
+    };
+    let mut parent_class = object_class
+        .state
+        .borrow()
+        .super_class
+        .clone()
+        .expect("Parent class not loaded");
+    loop {
+        if let Some((method, bytecode_index)) = parent_class
+            .class_file
+            .get_method_and_bytecode_index(method_name, method_descriptor)
+            && check_not_abstract_method(&parent_class.class_file, method)
+        {
+            return Ok((parent_class, method, bytecode_index));
+        }
+
+        if parent_class.class_file.super_class_index.is_none() {
+            return Err(construct_virtual_method_error(
+                method_name,
+                method_descriptor,
+            ));
+        };
+        parent_class = {
+            parent_class
+                .state
+                .borrow()
+                .super_class
+                .clone()
+                .expect("Parent class not loaded")
+        };
+    }
+}
 
 fn construct_virtual_method_error(
     method_name: impl Into<String>,
