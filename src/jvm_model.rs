@@ -5,7 +5,7 @@ use std::{
 use crate::{
     class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
     method_call_cache::MethodCallCache, native_method_resolver::NativeMethodResolver,
-    verifier::VerifierError,
+    object_creation_cache::ObjectCreationCache, verifier::VerifierError,
 };
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
@@ -404,6 +404,9 @@ pub struct ClassState {
     pub non_static_fields: Option<Vec<FieldInfo>>,
     pub default_object: Option<HeapObject>,
     pub super_class: Option<Rc<JvmClass>>,
+    /// cache that maps indexes from new to classes
+    pub object_creation_cache: ObjectCreationCache,
+    pub called_virtual_method_index: Option<usize>,
 }
 impl Default for ClassState {
     fn default() -> Self {
@@ -412,6 +415,8 @@ impl Default for ClassState {
             non_static_fields: None,
             default_object: None,
             super_class: None,
+            object_creation_cache: ObjectCreationCache::new(),
+            called_virtual_method_index: None,
         }
     }
 }

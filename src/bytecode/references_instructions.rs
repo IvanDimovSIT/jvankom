@@ -187,45 +187,63 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
 pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
-
-    // find and load class
-    let cp_index = validate_cp_index(unvalidated_cp_index)?;
-    let current_class = frame.class.clone();
-    let class_name = if let Some(name) = current_class
-        .class_file
-        .constant_pool
-        .get_class_name(cp_index)
+    let new_object_class = if let Some(new_object_class) = frame
+        .class
+        .state
+        .borrow()
+        .object_creation_cache
+        .get(unvalidated_cp_index)
     {
-        name
+        new_object_class
     } else {
-        return Err(JvmError::InvalidClassIndex(cp_index).bx());
+        // find and load class
+        let cp_index = validate_cp_index(unvalidated_cp_index)?;
+        let current_class = frame.class.clone();
+        let class_name = if let Some(name) = current_class
+            .class_file
+            .constant_pool
+            .get_class_name(cp_index)
+        {
+            name
+        } else {
+            return Err(JvmError::InvalidClassIndex(cp_index).bx());
+        };
+
+        let loaded_class = context.class_loader.get(class_name)?;
+        frame
+            .class
+            .state
+            .borrow_mut()
+            .object_creation_cache
+            .register(unvalidated_cp_index, loaded_class.clone());
+
+        // initialise class and rewind
+        if !loaded_class.state.borrow().is_initialised {
+            frame.program_counter -= 3;
+            JVM::initialise_class(
+                context.current_thread,
+                &loaded_class,
+                context.class_loader,
+                class_name,
+            )?;
+
+            return Ok(());
+        }
+
+        loaded_class
     };
 
-    let loaded_class = context.class_loader.get(class_name)?;
-
-    // initialise class and rewind
-    if !loaded_class.state.borrow().is_initialised {
-        frame.program_counter -= 3;
-        JVM::initialise_class(
-            context.current_thread,
-            &loaded_class,
-            context.class_loader,
-            class_name,
-        )?;
-
-        return Ok(());
-    }
-
-    let object = if let Some(object) = loaded_class.state.borrow().default_object.clone() {
+    let object = if let Some(object) = new_object_class.state.borrow().default_object.clone() {
         object
     } else {
-        let field_infos = determine_non_static_field_types(&loaded_class, context.class_loader)?;
-        let object = initialise_object_fields(loaded_class.clone(), &field_infos);
-        loaded_class.state.borrow_mut().default_object = Some(object.clone());
-        loaded_class.state.borrow_mut().non_static_fields = Some(field_infos);
+        let field_infos = determine_non_static_field_types(&new_object_class)?;
+        let object = initialise_object_fields(new_object_class.clone(), &field_infos);
+        new_object_class.state.borrow_mut().default_object = Some(object.clone());
+        new_object_class.state.borrow_mut().non_static_fields = Some(field_infos);
 
         object
     };
+
     let object_ref = context.heap.allocate(object);
     frame
         .operand_stack

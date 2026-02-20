@@ -16,10 +16,7 @@ pub fn initialise_object_fields(class: Rc<JvmClass>, field_infos: &[FieldInfo]) 
     HeapObject::Object { class, fields }
 }
 
-pub fn determine_non_static_field_types(
-    class: &Rc<JvmClass>,
-    class_loader: &mut ClassLoader,
-) -> JvmResult<Vec<FieldInfo>> {
+pub fn determine_non_static_field_types(class: &Rc<JvmClass>) -> JvmResult<Vec<FieldInfo>> {
     let mut field_infos = vec![];
 
     for f in &class.class_file.fields {
@@ -62,7 +59,7 @@ pub fn determine_non_static_field_types(
             .super_class
             .clone()
             .expect("Class should be initialised");
-        let super_types = determine_non_static_field_types(&super_class, class_loader)?;
+        let super_types = determine_non_static_field_types(&super_class)?;
         field_infos.extend(super_types);
     }
 
