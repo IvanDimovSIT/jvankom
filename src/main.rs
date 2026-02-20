@@ -13,6 +13,7 @@ mod jvm_model;
 mod method_call_cache;
 mod native_method_resolver;
 mod object_creation_cache;
+mod v_table;
 mod verifier;
 
 fn main() {

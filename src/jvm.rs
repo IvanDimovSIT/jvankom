@@ -429,6 +429,7 @@ mod tests {
         assert_eq!(6, array[0]);
         assert_eq!(7, array[1]);
         assert_eq!(3, jvm.class_loader.get_loaded_count());
+        assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
     }
 
     #[test]
@@ -459,6 +460,7 @@ mod tests {
         assert_eq!(105, array[0]);
         assert_eq!(205, array[1]);
         assert_eq!(4, jvm.class_loader.get_loaded_count());
+        assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
     }
 
     #[test]
@@ -489,6 +491,7 @@ mod tests {
         assert_eq!(5000, array[0]);
         assert_eq!(5000000, array[1]);
         assert_eq!(4, jvm.class_loader.get_loaded_count());
+        assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
     }
 
     fn test_single_class_static_method_calls_helper(

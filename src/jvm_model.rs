@@ -5,7 +5,7 @@ use std::{
 use crate::{
     class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
     method_call_cache::MethodCallCache, native_method_resolver::NativeMethodResolver,
-    object_creation_cache::ObjectCreationCache, verifier::VerifierError,
+    object_creation_cache::ObjectCreationCache, v_table::VTable, verifier::VerifierError,
 };
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
@@ -228,17 +228,6 @@ pub enum HeapObject {
     LongArray(Vec<i64>),
     ObjectArray(Vec<Option<NonZeroUsize>>),
 }
-impl HeapObject {
-    pub fn get_parent(&self) -> Option<&str> {
-        match self {
-            HeapObject::Object {
-                class,
-                fields: _fields,
-            } => class.class_file.get_super_class_name(),
-            _ => Some("java/lang/Object"),
-        }
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct JvmHeap {
@@ -406,7 +395,7 @@ pub struct ClassState {
     pub super_class: Option<Rc<JvmClass>>,
     /// cache that maps indexes from new to classes
     pub object_creation_cache: ObjectCreationCache,
-    pub called_virtual_method_index: Option<usize>,
+    pub v_table: VTable,
 }
 impl Default for ClassState {
     fn default() -> Self {
@@ -416,7 +405,7 @@ impl Default for ClassState {
             default_object: None,
             super_class: None,
             object_creation_cache: ObjectCreationCache::new(),
-            called_virtual_method_index: None,
+            v_table: VTable::new(),
         }
     }
 }

@@ -8,7 +8,8 @@ use crate::{
     class_file::{ClassFile, MethodAccessFlags},
     jvm::JVM,
     jvm_model::{DescriptorType, JvmClass},
-    method_call_cache::StaticMethodCallInfo,
+    method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
+    v_table::VTableEntry,
 };
 
 use super::*;
@@ -257,34 +258,59 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let current_class = frame.class.clone();
 
-    let cp_index = validate_cp_index(unvalidated_cp_index)?;
-    let (class_name, method_name, method_descriptor) = if let Some(called_method) = current_class
-        .class_file
-        .constant_pool
-        .get_class_methodname_descriptor(cp_index)
+    let (method_name, method_descriptor, params) = if let Some(virtual_cache) = context
+        .cache
+        .method_call_cache
+        .get_virtual_call_info(&frame.class, unvalidated_cp_index)
     {
-        called_method
+        (
+            virtual_cache.method_name.as_str(),
+            virtual_cache.descriptor.as_str(),
+            pop_params_for_special(&virtual_cache.parameter_list, frame)?,
+        )
     } else {
-        return Err(JvmError::InvalidMethodRefIndex(cp_index).bx());
+        let cp_index = validate_cp_index(unvalidated_cp_index)?;
+        let (class_name, method_name, method_descriptor) = if let Some(called_method) =
+            current_class
+                .class_file
+                .constant_pool
+                .get_class_methodname_descriptor(cp_index)
+        {
+            called_method
+        } else {
+            return Err(JvmError::InvalidMethodRefIndex(cp_index).bx());
+        };
+
+        let called_class = context.class_loader.get(class_name)?;
+        let param_types = parse_descriptor(method_descriptor)?;
+        let virtual_call_info = VirtualMethodCallInfo {
+            method_name: method_name.to_owned(),
+            descriptor: method_descriptor.to_owned(),
+            parameter_list: param_types.clone(),
+        };
+        context.cache.method_call_cache.register_virtual_call_info(
+            virtual_call_info,
+            unvalidated_cp_index,
+            &current_class,
+        );
+
+        // initialise class and rewind
+        if !called_class.state.borrow().is_initialised {
+            frame.program_counter -= 3;
+            JVM::initialise_class(
+                context.current_thread,
+                &called_class,
+                context.class_loader,
+                class_name,
+            )?;
+
+            return Ok(());
+        }
+
+        let params = pop_params_for_special(&param_types, frame)?;
+
+        (method_name, method_descriptor, params)
     };
-
-    let called_class = context.class_loader.get(class_name)?;
-
-    // initialise class and rewind
-    if !called_class.state.borrow().is_initialised {
-        frame.program_counter -= 3;
-        JVM::initialise_class(
-            context.current_thread,
-            &called_class,
-            context.class_loader,
-            class_name,
-        )?;
-
-        return Ok(());
-    }
-
-    let param_types = parse_descriptor(method_descriptor)?;
-    let params = pop_params_for_special(&param_types, frame)?;
     let object_ref = match params[0] {
         JvmValue::Reference(Some(non_zero)) => non_zero,
         _ => unreachable!("type and null already checked"),
@@ -299,9 +325,24 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
         _ => context.class_loader.get("java/lang/Object")?,
     };
 
-    let (resolved_class, called_method_index, called_bytecode_index) =
-        find_virtual_method(&object_class, method_name, method_descriptor)?;
-    let called_method = &resolved_class.class_file.methods[called_method_index];
+    let v_table_entry = if let Some(v_table_entry) = object_class
+        .state
+        .borrow()
+        .v_table
+        .get(method_name, method_descriptor)
+    {
+        v_table_entry
+    } else {
+        let v_table_entry = find_virtual_method(&object_class, method_name, method_descriptor)?;
+        object_class.state.borrow_mut().v_table.register(
+            method_name,
+            method_descriptor,
+            v_table_entry.clone(),
+        );
+        v_table_entry
+    };
+    let called_method =
+        &v_table_entry.resolved_class.class_file.methods[v_table_entry.method_index];
     if called_method
         .access_flags
         .check_flag(MethodAccessFlags::STATIC_FLAG)
@@ -311,14 +352,18 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
     if called_method
         .access_flags
         .check_flag(MethodAccessFlags::PRIVATE_FLAG)
-        && Rc::as_ptr(&resolved_class) != Rc::as_ptr(&frame.class)
+        && Rc::as_ptr(&v_table_entry.resolved_class) != Rc::as_ptr(&frame.class)
     {
         todo!("Throw IllegalAccessError")
     }
 
-    if let Some(bytecode_index) = called_bytecode_index {
-        let new_frame =
-            JvmStackFrame::new(resolved_class, called_method_index, bytecode_index, params);
+    if let Some(bytecode_index) = v_table_entry.bytecode_index {
+        let new_frame = JvmStackFrame::new(
+            v_table_entry.resolved_class,
+            v_table_entry.method_index,
+            bytecode_index,
+            params,
+        );
 
         context.current_thread.push(new_frame);
     } else {
@@ -333,8 +378,8 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
             context.current_thread,
             context.heap,
             params,
-            called_method_index,
-            resolved_class,
+            v_table_entry.method_index,
+            v_table_entry.resolved_class,
         );
     }
 
@@ -352,13 +397,17 @@ fn find_virtual_method(
     object_class: &Rc<JvmClass>,
     method_name: &str,
     method_descriptor: &str,
-) -> JvmResult<(Rc<JvmClass>, usize, Option<usize>)> {
+) -> JvmResult<VTableEntry> {
     if let Some((method, bytecode_index)) = object_class
         .class_file
         .get_method_and_bytecode_index(method_name, method_descriptor)
         && check_not_abstract_method(&object_class.class_file, method)
     {
-        return Ok((object_class.clone(), method, bytecode_index));
+        return Ok(VTableEntry::new(
+            object_class.clone(),
+            method,
+            bytecode_index,
+        ));
     }
 
     if object_class.class_file.super_class_index.is_none() {
@@ -379,7 +428,7 @@ fn find_virtual_method(
             .get_method_and_bytecode_index(method_name, method_descriptor)
             && check_not_abstract_method(&parent_class.class_file, method)
         {
-            return Ok((parent_class, method, bytecode_index));
+            return Ok(VTableEntry::new(parent_class, method, bytecode_index));
         }
 
         if parent_class.class_file.super_class_index.is_none() {
