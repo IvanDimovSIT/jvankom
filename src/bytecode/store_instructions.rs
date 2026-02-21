@@ -11,13 +11,9 @@ pub fn store_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
         todo!("Throw NullPointerException");
     };
 
-    let array = if let Some(array) = context.heap.get(array_ref) {
-        match array {
-            HeapObject::IntArray(items) => items,
-            _ => todo!("Throw ArrayStoreException"),
-        }
-    } else {
-        return Err(JvmError::InvalidReference.bx());
+    let array = match context.heap.get(array_ref) {
+        HeapObject::IntArray(items) => items,
+        _ => todo!("Throw ArrayStoreException"),
     };
 
     if index < 0 || index as usize >= array.len() {

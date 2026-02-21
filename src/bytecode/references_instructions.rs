@@ -315,10 +315,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
         JvmValue::Reference(Some(non_zero)) => non_zero,
         _ => unreachable!("type and null already checked"),
     };
-    let called_object = context
-        .heap
-        .get(object_ref)
-        .ok_or_else(|| JvmError::InvalidReference.bx())?;
+    let called_object = context.heap.get(object_ref);
 
     let object_class = match called_object {
         HeapObject::Object { class, fields: _ } => class.clone(),

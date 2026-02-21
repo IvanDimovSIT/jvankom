@@ -359,7 +359,7 @@ mod tests {
             .unwrap();
 
         match result {
-            JvmValue::Reference(Some(value)) => match jvm.heap.get(value).unwrap() {
+            JvmValue::Reference(Some(value)) => match jvm.heap.get(value) {
                 crate::jvm_model::HeapObject::IntArray(items) => {
                     assert_eq!(6, items.len());
                     assert_eq!(11, items[0]);
@@ -420,7 +420,7 @@ mod tests {
             JvmValue::Reference(Some(r)) => r,
             _ => panic!("expected valid reference"),
         };
-        let array = match jvm.heap.get(array_ref).unwrap() {
+        let array = match jvm.heap.get(array_ref) {
             HeapObject::IntArray(items) => items,
             _ => panic!("Expected array"),
         };
@@ -451,7 +451,7 @@ mod tests {
             JvmValue::Reference(Some(r)) => r,
             _ => panic!("expected valid reference"),
         };
-        let array = match jvm.heap.get(array_ref).unwrap() {
+        let array = match jvm.heap.get(array_ref) {
             HeapObject::IntArray(items) => items,
             _ => panic!("Expected array"),
         };
@@ -482,7 +482,7 @@ mod tests {
             JvmValue::Reference(Some(r)) => r,
             _ => panic!("expected valid reference"),
         };
-        let array = match jvm.heap.get(array_ref).unwrap() {
+        let array = match jvm.heap.get(array_ref) {
             HeapObject::IntArray(items) => items,
             _ => panic!("Expected array"),
         };
@@ -492,6 +492,37 @@ mod tests {
         assert_eq!(5000000, array[1]);
         assert_eq!(4, jvm.class_loader.get_loaded_count());
         assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
+    }
+
+    #[test]
+    fn test_virtual_call_other_with_private() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/VirtualCallTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "VirtualCall1Test".to_owned(),
+                "mainCallOtherWithPrivate".to_owned(),
+                "(I)[I".to_owned(),
+                vec![JvmValue::Int(5)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref) {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(2, array.len());
+        assert_eq!(12, array[0]);
+        assert_eq!(33, array[1]);
+        assert_eq!(4, jvm.class_loader.get_loaded_count());
+        assert_eq!(3, jvm.cache.method_call_cache.get_cache_hits());
     }
 
     fn test_single_class_static_method_calls_helper(

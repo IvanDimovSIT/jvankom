@@ -1,7 +1,7 @@
 use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
 use crate::{
-    bytecode::{ALOAD, ASTORE, ILOAD, INVOKESTATIC, IRETURN, ISTORE, RETURN},
+    bytecode::{ALOAD, ASTORE, ILOAD, IRETURN, ISTORE, RETURN},
     class_file::{Attribute, Bytecode, ClassFile, ConstantValue, Method},
     class_parser::UnverifiedClassFile,
 };

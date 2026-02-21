@@ -2,7 +2,6 @@ use std::rc::Rc;
 
 use crate::{
     class_file::FieldAccessFlags,
-    class_loader::ClassLoader,
     jvm_model::{DescriptorType, FieldInfo, HeapObject, JvmClass, JvmResult},
 };
 
