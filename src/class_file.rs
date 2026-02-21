@@ -285,6 +285,24 @@ impl ConstantPool {
 
         Some(class_name)
     }
+
+    /// returns field's class name, field name, type
+    pub fn get_field_class_name_type(
+        &self,
+        field_ref_index: NonZeroUsize,
+    ) -> Option<(&str, &str, &str)> {
+        match self.get(field_ref_index) {
+            ConstantValue::FieldRef {
+                class_index,
+                name_and_type_index,
+            } => {
+                let class_name = self.get_class_name(*class_index)?;
+                let (field_name, field_type) = self.get_name_and_type(*name_and_type_index)?;
+                Some((class_name, field_name, field_type))
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

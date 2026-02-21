@@ -5,7 +5,9 @@ use crate::{
         method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_special},
         object_field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     },
-    class_file::{ClassFile, MethodAccessFlags},
+    class_file::{ClassFile, FieldAccessFlags, MethodAccessFlags},
+    class_loader::ClassLoader,
+    field_access_cache::FieldAccessInfo,
     jvm::JVM,
     jvm_model::{DescriptorType, JvmClass},
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
@@ -248,8 +250,9 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
     } else {
         let field_infos = determine_non_static_field_types(&new_object_class)?;
         let object = initialise_object_fields(new_object_class.clone(), &field_infos);
-        new_object_class.state.borrow_mut().default_object = Some(object.clone());
-        new_object_class.state.borrow_mut().non_static_fields = Some(field_infos);
+        let mut state_ref = new_object_class.state.borrow_mut();
+        state_ref.default_object = Some(object.clone());
+        state_ref.non_static_fields = Some(field_infos);
 
         object
     };
@@ -390,6 +393,163 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
     }
 
     Ok(())
+}
+
+pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let unvalidated_cp_index = read_u16_from_bytecode(frame);
+    let (field_index, _) = access_object_field(unvalidated_cp_index, frame, context.class_loader)?;
+    let object_ref = if let Some(reference) = pop_reference(frame)? {
+        reference
+    } else {
+        todo!("Throw NullPointerException")
+    };
+    let (_object_class, object_fields) = match context.heap.get(object_ref) {
+        HeapObject::Object { class, fields } => (class, fields),
+        _ => todo!("Throw Exception: Expected non array"),
+    };
+
+    let value = object_fields[field_index];
+    frame.operand_stack.push(value);
+
+    Ok(())
+}
+
+pub fn put_field_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let unvalidated_cp_index = read_u16_from_bytecode(frame);
+    let (field_index, field_descriptor) =
+        access_object_field(unvalidated_cp_index, frame, context.class_loader)?;
+    let value = pop_any(frame)?;
+    let object_ref = if let Some(reference) = pop_reference(frame)? {
+        reference
+    } else {
+        todo!("Throw NullPointerException")
+    };
+    let (_object_class, object_fields) = match context.heap.get(object_ref) {
+        HeapObject::Object { class, fields } => (class, fields),
+        _ => todo!("Throw Exception: Expected non array"),
+    };
+    if !value.matches_type(field_descriptor) {
+        todo!("Throw type error")
+    }
+
+    object_fields[field_index] = value;
+
+    Ok(())
+}
+
+fn access_object_field(
+    unvalidated_cp_index: u16,
+    frame: &mut JvmStackFrame,
+    class_loader: &mut ClassLoader,
+) -> JvmResult<(usize, DescriptorType)> {
+    let current_class = frame.class.clone();
+
+    // check cache
+    if let Some(info) = current_class
+        .state
+        .borrow()
+        .field_access_cache
+        .get(unvalidated_cp_index)
+    {
+        let field_descriptor =
+            get_non_static_field_descriptor(&info.target_class, info.field_index);
+
+        return Ok((info.field_index, field_descriptor));
+    }
+
+    // cache miss
+    let cp_index = validate_cp_index(unvalidated_cp_index)?;
+    let (field_class_name, field_name, _field_type) = if let Some(field_info) = current_class
+        .class_file
+        .constant_pool
+        .get_field_class_name_type(cp_index)
+    {
+        field_info
+    } else {
+        return Err(JvmError::InvalidMethodRefIndex(cp_index).bx());
+    };
+    let declared_class = class_loader.get(field_class_name)?;
+    let field_index = find_field_index(&declared_class, field_name)?;
+    let declared_class_file_field_index = declared_class
+        .state
+        .borrow()
+        .non_static_fields
+        .as_ref()
+        .expect("Missing non static fields")[field_index]
+        .field_class_file_index;
+
+    // the class that originally declared the field (the top parent that has the field)
+    let field_class = declared_class
+        .state
+        .borrow()
+        .non_static_fields
+        .as_ref()
+        .expect("Missing non static fields")[field_index]
+        .class
+        .clone();
+    if field_class.class_file.fields[declared_class_file_field_index]
+        .access_flags
+        .check_flag(FieldAccessFlags::PRIVATE_FLAG)
+        && Rc::as_ptr(&declared_class) != Rc::as_ptr(&current_class)
+    {
+        todo!("Throw access error")
+    }
+    let field_descriptor = get_non_static_field_descriptor(&declared_class, field_index);
+
+    let field_access_info = FieldAccessInfo {
+        target_class: declared_class.clone(),
+        field_index,
+    };
+    current_class
+        .state
+        .borrow_mut()
+        .field_access_cache
+        .register(unvalidated_cp_index, field_access_info);
+
+    Ok((field_index, field_descriptor))
+}
+
+#[inline]
+fn get_non_static_field_descriptor(
+    class: &JvmClass,
+    non_static_field_index: usize,
+) -> DescriptorType {
+    class
+        .state
+        .borrow()
+        .non_static_fields
+        .as_ref()
+        .expect("Missing non static fields")[non_static_field_index]
+        .descriptor_type
+}
+
+fn find_field_index(object_class: &Rc<JvmClass>, field_name: &str) -> JvmResult<usize> {
+    let obj_state = object_class.state.borrow();
+
+    if let Some(fields) = &obj_state.non_static_fields {
+        for (i, field) in fields.iter().enumerate() {
+            if field.name == field_name {
+                return Ok(i);
+            }
+        }
+    } else {
+        drop(obj_state);
+        let field_types = determine_non_static_field_types(object_class)?;
+        object_class.state.borrow_mut().non_static_fields = Some(field_types);
+        return find_field_index(object_class, field_name);
+    }
+
+    Err(JvmError::FieldNotFound {
+        class_name: object_class
+            .class_file
+            .get_class_name()
+            .unwrap_or_default()
+            .to_owned(),
+        field_name: field_name.to_owned(),
+    }
+    .bx())
 }
 
 fn check_not_abstract_method(class_file: &ClassFile, method_index: usize) -> bool {

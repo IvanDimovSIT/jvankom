@@ -8,6 +8,7 @@ mod bytecode;
 mod class_file;
 mod class_loader;
 mod class_parser;
+mod field_access_cache;
 mod jvm;
 mod jvm_model;
 mod method_call_cache;

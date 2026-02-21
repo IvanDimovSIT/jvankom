@@ -16,9 +16,12 @@ pub fn initialise_object_fields(class: Rc<JvmClass>, field_infos: &[FieldInfo]) 
 }
 
 pub fn determine_non_static_field_types(class: &Rc<JvmClass>) -> JvmResult<Vec<FieldInfo>> {
+    if let Some(non_static) = class.state.borrow().non_static_fields.clone() {
+        return Ok(non_static);
+    }
     let mut field_infos = vec![];
 
-    for f in &class.class_file.fields {
+    for (i, f) in class.class_file.fields.iter().enumerate() {
         if f.access_flags.check_flag(FieldAccessFlags::STATIC_FLAG) {
             continue;
         }
@@ -36,16 +39,11 @@ pub fn determine_non_static_field_types(class: &Rc<JvmClass>) -> JvmResult<Vec<F
             .expect("Expected field name")
             .to_owned();
 
-        let class_name = class
-            .class_file
-            .get_class_name()
-            .expect("Expected class name")
-            .to_owned();
-
         let field_info = FieldInfo {
             name: field_name,
-            class: class_name,
+            class: class.clone(),
             descriptor_type: parse_field_descriptor(descriptor),
+            field_class_file_index: i,
         };
 
         field_infos.push(field_info);
@@ -58,8 +56,9 @@ pub fn determine_non_static_field_types(class: &Rc<JvmClass>) -> JvmResult<Vec<F
             .super_class
             .clone()
             .expect("Class should be initialised");
-        let super_types = determine_non_static_field_types(&super_class)?;
-        field_infos.extend(super_types);
+        let mut super_types = determine_non_static_field_types(&super_class)?;
+        super_types.extend(field_infos);
+        return Ok(super_types);
     }
 
     Ok(field_infos)

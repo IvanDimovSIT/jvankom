@@ -2,8 +2,9 @@ use std::{cell::RefCell, error::Error, fmt::Display, num::NonZeroUsize, rc::Rc};
 
 use crate::{
     class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
-    method_call_cache::MethodCallCache, native_method_resolver::NativeMethodResolver,
-    object_creation_cache::ObjectCreationCache, v_table::VTable, verifier::VerifierError,
+    field_access_cache::FieldAccessCache, method_call_cache::MethodCallCache,
+    native_method_resolver::NativeMethodResolver, object_creation_cache::ObjectCreationCache,
+    v_table::VTable, verifier::VerifierError,
 };
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
@@ -89,6 +90,7 @@ pub enum JvmError {
     InvalidMethodDescriptor(String),
     InvalidConstantPoolIndex,
     InvalidMethodRefIndex(NonZeroUsize),
+    InvalidFieldRefIndex(NonZeroUsize),
     InvalidClassIndex(NonZeroUsize),
     VirtualMethodError {
         method_name: String,
@@ -102,6 +104,10 @@ pub enum JvmError {
         class_name: String,
         method_name: String,
         method_descriptor: String,
+    },
+    FieldNotFound {
+        class_name: String,
+        field_name: String,
     },
 }
 impl JvmError {
@@ -155,6 +161,9 @@ impl Display for JvmError {
             JvmError::InvalidMethodRefIndex(index) => {
                 format!("Invalid method ref index: '{index}'")
             }
+            JvmError::InvalidFieldRefIndex(index) => {
+                format!("Invalid field ref index: '{index}'")
+            }
             JvmError::InvalidConstantPoolIndex => "Invalid constant pool index'".to_owned(),
             JvmError::InvalidClassIndex(index) => {
                 format!("Invalid class index: '{index}'")
@@ -179,6 +188,12 @@ impl Display for JvmError {
                 format!(
                     "Native method implementation not found for: {class_name}.{method_name}{method_descriptor}"
                 )
+            }
+            JvmError::FieldNotFound {
+                class_name,
+                field_name,
+            } => {
+                format!("Field not found: {class_name}.{field_name}")
             }
         };
 
@@ -206,6 +221,24 @@ impl JvmValue {
             Self::Double(_) => JvmType::Double,
             Self::Reference(_) => JvmType::Reference,
             Self::Unusable => panic!("Attempting to get the type of an unusable slot"),
+        }
+    }
+
+    pub fn matches_type(self, desciptor: DescriptorType) -> bool {
+        match self {
+            JvmValue::Int(_) => matches!(
+                desciptor,
+                DescriptorType::Short
+                    | DescriptorType::Boolean
+                    | DescriptorType::Character
+                    | DescriptorType::Byte
+                    | DescriptorType::Integer
+            ),
+            JvmValue::Long(_) => matches!(desciptor, DescriptorType::Long),
+            JvmValue::Float(_) => matches!(desciptor, DescriptorType::Float),
+            JvmValue::Double(_) => matches!(desciptor, DescriptorType::Long),
+            JvmValue::Reference(_) => matches!(desciptor, DescriptorType::Reference),
+            JvmValue::Unusable => panic!("Attempting to get the type of an unusable slot"),
         }
     }
 }
@@ -376,7 +409,10 @@ pub struct JvmContext<'a> {
 #[derive(Debug, Clone)]
 pub struct FieldInfo {
     pub name: String,
-    pub class: String,
+    /// class that originally declared the field, class file holds the Field
+    pub class: Rc<JvmClass>,
+    /// index into the original class file that has the Field object
+    pub field_class_file_index: usize,
     pub descriptor_type: DescriptorType,
 }
 
@@ -403,6 +439,7 @@ pub struct ClassState {
     /// cache that maps indexes from new to classes
     pub object_creation_cache: ObjectCreationCache,
     pub v_table: VTable,
+    pub field_access_cache: FieldAccessCache,
 }
 impl Default for ClassState {
     fn default() -> Self {
@@ -413,6 +450,7 @@ impl Default for ClassState {
             super_class: None,
             object_creation_cache: ObjectCreationCache::new(),
             v_table: VTable::new(),
+            field_access_cache: FieldAccessCache::new(),
         }
     }
 }

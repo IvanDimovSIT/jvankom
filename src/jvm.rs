@@ -525,6 +525,114 @@ mod tests {
         assert_eq!(3, jvm.cache.method_call_cache.get_cache_hits());
     }
 
+    #[test]
+    fn test_non_static_fields() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/NonStaticFieldTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "NonStaticFieldTest1".to_owned(),
+                "mainCall".to_owned(),
+                "(I)[I".to_owned(),
+                vec![JvmValue::Int(100)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref) {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(5, array.len());
+        assert_eq!(2, array[0]);
+        assert_eq!(100, array[1]);
+        assert_eq!(5, array[2]);
+        assert_eq!(6, array[3]);
+        assert_eq!(7, array[4]);
+        assert_eq!(3, jvm.class_loader.get_loaded_count());
+    }
+
+    #[test]
+    fn test_chain_field_inheritance() {
+        test_chain_field_inheritance_helper("mainCall");
+        test_chain_field_inheritance_helper("testCache");
+    }
+
+    fn test_chain_field_inheritance_helper(method: impl Into<String>) {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/ChainFieldInheritanceTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "ChainFieldInheritanceTest".to_owned(),
+                method.into(),
+                "()[I".to_owned(),
+                vec![],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref) {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(4, array.len());
+        assert_eq!(1, array[0]);
+        assert_eq!(2, array[1]);
+        assert_eq!(3, array[2]);
+        assert_eq!(4, array[3]);
+        assert_eq!(6, jvm.class_loader.get_loaded_count());
+    }
+
+    #[test]
+    fn test_field_shadowing() {
+        test_field_shadowing_helper("mainCall");
+        test_field_shadowing_helper("testCache");
+    }
+
+    fn test_field_shadowing_helper(method: impl Into<String>) {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/FieldShadowingTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "FieldShadowingTest".to_owned(),
+                method.into(),
+                "()[I".to_owned(),
+                vec![],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref) {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(5, array.len());
+        assert_eq!(10, array[0]);
+        assert_eq!(20, array[1]);
+        assert_eq!(666, array[2]);
+        assert_eq!(20, array[3]);
+        assert_eq!(30, array[4]);
+        assert_eq!(3, jvm.class_loader.get_loaded_count());
+    }
+
     fn test_single_class_static_method_calls_helper(
         param1: i32,
         param2: i32,

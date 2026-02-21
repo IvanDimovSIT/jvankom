@@ -66,6 +66,8 @@ pub const INEG: u8 = 0x74;
 pub const IRETURN: u8 = 0xac;
 pub const ARETURN: u8 = 0xb0;
 pub const RETURN: u8 = 0xb1;
+pub const GETFIELD: u8 = 0xb4;
+pub const PUTFIELD: u8 = 0xb5;
 pub const INVOKEVIRTUAL: u8 = 0xb6;
 pub const INVOKESPECIAL: u8 = 0xb7;
 pub const INVOKESTATIC: u8 = 0xb8;
@@ -126,6 +128,8 @@ impl BytecodeTable {
             (IRETURN, integer_return_instruction),
             (ARETURN, object_return_instruction),
             (RETURN, return_instruction),
+            (GETFIELD, get_field_instruction),
+            (PUTFIELD, put_field_instruction),
             (INVOKEVIRTUAL, invoke_virtual_instruction),
             (INVOKESPECIAL, invoke_static_or_special_instruction::<true>),
             (INVOKESTATIC, invoke_static_or_special_instruction::<false>),
@@ -188,6 +192,15 @@ fn read_u16_from_bytecode(frame: &mut JvmStackFrame) -> u16 {
 fn pop_long(frame: &mut JvmStackFrame) -> JvmResult<i64> {
     if let Some(a) = frame.operand_stack.pop() {
         expect_long(a)
+    } else {
+        Err(JvmError::NoOperandFound.bx())
+    }
+}
+
+#[inline]
+fn pop_any(frame: &mut JvmStackFrame) -> JvmResult<JvmValue> {
+    if let Some(value) = frame.operand_stack.pop() {
+        Ok(value)
     } else {
         Err(JvmError::NoOperandFound.bx())
     }
