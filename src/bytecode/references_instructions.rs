@@ -14,6 +14,15 @@ use crate::{
 
 use super::*;
 
+const BOOLEAN_ARR: u8 = 4;
+const CHAR_ARR: u8 = 5;
+const FLOAT_ARR: u8 = 6;
+const DOUBLE_ARR: u8 = 7;
+const BYTE_ARR: u8 = 8;
+const SHORT_ARR: u8 = 9;
+const INT_ARR: u8 = 10;
+const LONG_ARR: u8 = 11;
+
 pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
     let bytecode =
@@ -28,14 +37,14 @@ pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
     let array_size = operand_value as usize;
 
     let object = match array_type_value {
-        4 => HeapObject::BooleanArray(vec![false; array_size]),
-        5 => HeapObject::CharacterArray(vec![0; array_size]),
-        6 => HeapObject::FloatArray(vec![0.0; array_size]),
-        7 => HeapObject::DoubleArray(vec![0.0; array_size]),
-        8 => HeapObject::ByteArray(vec![0; array_size]),
-        9 => HeapObject::ShortArray(vec![0; array_size]),
-        10 => HeapObject::IntArray(vec![0; array_size]),
-        11 => HeapObject::LongArray(vec![0; array_size]),
+        BOOLEAN_ARR => HeapObject::BooleanArray(vec![false; array_size]),
+        CHAR_ARR => HeapObject::CharacterArray(vec![0; array_size]),
+        FLOAT_ARR => HeapObject::FloatArray(vec![0.0; array_size]),
+        DOUBLE_ARR => HeapObject::DoubleArray(vec![0.0; array_size]),
+        BYTE_ARR => HeapObject::ByteArray(vec![0; array_size]),
+        SHORT_ARR => HeapObject::ShortArray(vec![0; array_size]),
+        INT_ARR => HeapObject::IntArray(vec![0; array_size]),
+        LONG_ARR => HeapObject::LongArray(vec![0; array_size]),
         _ => return Err(JvmError::InvalidArrayType(array_type_value).bx()),
     };
 

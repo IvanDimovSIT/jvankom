@@ -7,10 +7,14 @@ pub fn return_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
-pub fn integer_return_instruction(context: JvmContext) -> JvmResult<()> {
+#[inline]
+fn generic_return_instruction<F, T>(context: JvmContext, expect_generic: F) -> JvmResult<()>
+where
+    F: FnOnce(JvmValue) -> JvmResult<T>,
+{
     let frame = context.current_thread.peek().unwrap();
     if let Some(value_to_return) = frame.operand_stack.pop() {
-        expect_int(value_to_return)?;
+        expect_generic(value_to_return)?;
         frame.should_return = true;
         frame.return_value = Some(value_to_return);
     } else {
@@ -20,15 +24,10 @@ pub fn integer_return_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
-pub fn object_return_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
-    if let Some(value_to_return) = frame.operand_stack.pop() {
-        expect_reference(value_to_return)?;
-        frame.should_return = true;
-        frame.return_value = Some(value_to_return);
-    } else {
-        return Err(JvmError::NoOperandFound.bx());
-    }
+pub fn integer_return_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_return_instruction(context, expect_int)
+}
 
-    Ok(())
+pub fn object_return_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_return_instruction(context, expect_reference)
 }

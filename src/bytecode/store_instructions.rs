@@ -1,9 +1,18 @@
 use super::*;
 
-pub fn store_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
+#[inline]
+fn store_generic_array_instruction<P, F, T>(
+    context: JvmContext,
+    pop_generic: P,
+    get_array_fn: F,
+) -> JvmResult<()>
+where
+    P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
+    F: FnOnce(&mut HeapObject) -> &mut Vec<T>,
+{
     let frame = context.current_thread.peek().unwrap();
 
-    let value = pop_int(frame)?;
+    let value = pop_generic(frame)?;
     let index = pop_int(frame)?;
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
@@ -11,10 +20,7 @@ pub fn store_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
         todo!("Throw NullPointerException");
     };
 
-    let array = match context.heap.get(array_ref) {
-        HeapObject::IntArray(items) => items,
-        _ => todo!("Throw ArrayStoreException"),
-    };
+    let array = get_array_fn(context.heap.get(array_ref));
 
     if index < 0 || index as usize >= array.len() {
         todo!("Throw ArrayIndexOutOfBoundsException");
@@ -24,50 +30,67 @@ pub fn store_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
-pub fn store_reference_n_instruction(context: JvmContext) -> JvmResult<()> {
+pub fn store_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
+    store_generic_array_instruction(context, pop_int, |obj| match obj {
+        HeapObject::IntArray(items) => items,
+        _ => todo!("Throw ArrayStoreException"),
+    })
+}
+
+#[inline]
+fn store_generic_n_instruction<P, W, T>(
+    context: JvmContext,
+    pop_generic: P,
+    wrap_value: W,
+) -> JvmResult<()>
+where
+    P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
+    W: FnOnce(T) -> JvmValue,
+{
     let frame = context.current_thread.peek().unwrap();
     let bytecode =
         frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     let index_value = bytecode.code[frame.program_counter] as usize;
     frame.program_counter += 1;
 
-    let reference = pop_reference(frame)?;
+    let generic_value = pop_generic(frame)?;
 
-    frame.local_variables[index_value] = JvmValue::Reference(reference);
+    frame.local_variables[index_value] = wrap_value(generic_value);
 
     Ok(())
+}
+
+#[inline]
+fn store_generic_instruction<const INDEX: usize, P, W, T>(
+    context: JvmContext,
+    pop_generic: P,
+    wrap_value: W,
+) -> JvmResult<()>
+where
+    P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
+    W: FnOnce(T) -> JvmValue,
+{
+    let frame = context.current_thread.peek().unwrap();
+
+    let value = pop_generic(frame)?;
+    debug_assert!(INDEX < frame.local_variables.len());
+    frame.local_variables[INDEX] = wrap_value(value);
+
+    Ok(())
+}
+
+pub fn store_reference_n_instruction(context: JvmContext) -> JvmResult<()> {
+    store_generic_n_instruction(context, pop_reference, JvmValue::Reference)
 }
 
 pub fn store_reference_instruction<const INDEX: usize>(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
-
-    let reference = pop_reference(frame)?;
-    debug_assert!(INDEX < frame.local_variables.len());
-    frame.local_variables[INDEX] = JvmValue::Reference(reference);
-
-    Ok(())
+    store_generic_instruction::<INDEX, _, _, _>(context, pop_reference, JvmValue::Reference)
 }
 
 pub fn store_integer_n_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
-    let bytecode =
-        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
-    let index_value = bytecode.code[frame.program_counter] as usize;
-    frame.program_counter += 1;
-
-    let int = pop_int(frame)?;
-
-    frame.local_variables[index_value] = JvmValue::Int(int);
-
-    Ok(())
+    store_generic_n_instruction(context, pop_int, JvmValue::Int)
 }
 
 pub fn store_integer_instruction<const INDEX: usize>(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
-
-    let int = pop_int(frame)?;
-    debug_assert!(INDEX < frame.local_variables.len());
-    frame.local_variables[INDEX] = JvmValue::Int(int);
-
-    Ok(())
+    store_generic_instruction::<INDEX, _, _, _>(context, pop_int, JvmValue::Int)
 }
