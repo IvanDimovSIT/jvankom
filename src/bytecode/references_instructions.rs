@@ -1,15 +1,13 @@
 use std::rc::Rc;
 
 use crate::{
-    bytecode::{
-        method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_special},
-        object_field_initialisation::{determine_non_static_field_types, initialise_object_fields},
-    },
+    bytecode::method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_special},
     class_file::{ClassFile, FieldAccessFlags, MethodAccessFlags},
     class_loader::ClassLoader,
     field_access_cache::FieldAccessInfo,
+    field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     jvm::JVM,
-    jvm_model::{DescriptorType, JvmClass},
+    jvm_model::{DescriptorType, JvmClass, StaticFieldInfo},
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
     v_table::VTableEntry,
 };
@@ -439,6 +437,141 @@ pub fn put_field_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
+pub fn get_static_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_static_field_instruction(context, |field, frame| {
+        frame.operand_stack.push(field.value);
+        Ok(())
+    })
+}
+
+pub fn put_static_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_static_field_instruction(context, |field, frame| {
+        let descriptor = field.descriptor_type;
+        let value = pop_any(frame)?;
+        if !value.matches_type(descriptor) {
+            todo!("Throw type error")
+        }
+
+        field.value = value;
+        Ok(())
+    })
+}
+
+#[inline]
+fn generic_static_field_instruction<F>(context: JvmContext, field_fn: F) -> JvmResult<()>
+where
+    F: FnOnce(&mut StaticFieldInfo, &mut JvmStackFrame) -> JvmResult<()>,
+{
+    let frame = context.current_thread.peek().unwrap();
+    let unvalidated_cp_index = read_u16_from_bytecode(frame);
+    let current_class = frame.class.clone();
+
+    // cache hit:
+    let current_class_state = current_class.state.borrow();
+    if let Some(info) = current_class_state
+        .field_access_cache
+        .get_static(unvalidated_cp_index)
+    {
+        drop(current_class_state);
+        let mut state = info.target_class.state.borrow_mut();
+        let fields = state
+            .static_fields
+            .as_mut()
+            .expect("Fields should be initialised");
+        return field_fn(&mut fields[info.field_index], frame);
+    }
+    drop(current_class_state);
+
+    // cache miss:
+    let cp_index = validate_cp_index(unvalidated_cp_index)?;
+    let (class_name, field_name, _descriptor) = if let Some(static_field) = current_class
+        .class_file
+        .constant_pool
+        .get_field_class_name_type(cp_index)
+    {
+        static_field
+    } else {
+        return Err(JvmError::InvalidMethodRefIndex(cp_index).bx());
+    };
+
+    let class = context.class_loader.get(class_name)?;
+
+    // initialise class and rewind
+    if !class.state.borrow().is_initialised {
+        frame.program_counter -= 3;
+        JVM::initialise_class(
+            context.current_thread,
+            &class,
+            context.class_loader,
+            class_name,
+        )?;
+
+        return Ok(());
+    }
+
+    let (class, index) = find_static_field_class_with_index(class, field_name)?;
+    let mut state = class.state.borrow_mut();
+    let fields = state
+        .static_fields
+        .as_mut()
+        .expect("Static fields not initialised");
+
+    let class_file_index = fields[index].field_class_file_index;
+    if class.class_file.fields[class_file_index]
+        .access_flags
+        .check_flag(FieldAccessFlags::PRIVATE_FLAG)
+        && Rc::as_ptr(&current_class) != Rc::as_ptr(&class)
+    {
+        todo!("Throw access exception")
+    }
+
+    field_fn(&mut fields[index], frame)?;
+    drop(state);
+
+    let info = FieldAccessInfo {
+        target_class: class,
+        field_index: index,
+    };
+    current_class
+        .state
+        .borrow_mut()
+        .field_access_cache
+        .register_static(unvalidated_cp_index, info.clone());
+
+    Ok(())
+}
+
+fn find_static_field_class_with_index(
+    class: Rc<JvmClass>,
+    name: &str,
+) -> JvmResult<(Rc<JvmClass>, usize)> {
+    let class_state = class.state.borrow();
+    if let Some(static_fields) = &class_state.static_fields {
+        for (index, field) in static_fields.iter().enumerate() {
+            if name == field.name {
+                drop(class_state);
+                return Ok((class, index));
+            }
+        }
+
+        if let Some(parent) = &class_state.super_class {
+            let parent = parent.clone();
+            drop(class_state);
+            return find_static_field_class_with_index(parent, name);
+        }
+    }
+
+    Err(JvmError::StaticFieldNotFound {
+        class_name: class
+            .class_file
+            .get_class_name()
+            .unwrap_or_default()
+            .to_owned(),
+        field_name: name.to_owned(),
+    }
+    .bx())
+}
+
 fn access_object_field(
     unvalidated_cp_index: u16,
     frame: &mut JvmStackFrame,
@@ -451,7 +584,7 @@ fn access_object_field(
         .state
         .borrow()
         .field_access_cache
-        .get(unvalidated_cp_index)
+        .get_non_static(unvalidated_cp_index)
     {
         let field_descriptor =
             get_non_static_field_descriptor(&info.target_class, info.field_index);
@@ -506,7 +639,7 @@ fn access_object_field(
         .state
         .borrow_mut()
         .field_access_cache
-        .register(unvalidated_cp_index, field_access_info);
+        .register_non_static(unvalidated_cp_index, field_access_info);
 
     Ok((field_index, field_descriptor))
 }

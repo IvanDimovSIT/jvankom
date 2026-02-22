@@ -17,7 +17,6 @@ mod control_instructions;
 mod load_instructions;
 mod math_instructions;
 mod method_descriptor_parser;
-mod object_field_initialisation;
 mod references_instructions;
 mod stack_instructions;
 mod store_instructions;
@@ -66,6 +65,8 @@ pub const INEG: u8 = 0x74;
 pub const IRETURN: u8 = 0xac;
 pub const ARETURN: u8 = 0xb0;
 pub const RETURN: u8 = 0xb1;
+pub const GETSTATIC: u8 = 0xb2;
+pub const PUTSTATIC: u8 = 0xb3;
 pub const GETFIELD: u8 = 0xb4;
 pub const PUTFIELD: u8 = 0xb5;
 pub const INVOKEVIRTUAL: u8 = 0xb6;
@@ -128,6 +129,8 @@ impl BytecodeTable {
             (IRETURN, integer_return_instruction),
             (ARETURN, object_return_instruction),
             (RETURN, return_instruction),
+            (GETSTATIC, get_static_instruction),
+            (PUTSTATIC, put_static_instruction),
             (GETFIELD, get_field_instruction),
             (PUTFIELD, put_field_instruction),
             (INVOKEVIRTUAL, invoke_virtual_instruction),

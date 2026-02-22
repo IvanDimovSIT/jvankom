@@ -3,6 +3,7 @@ use std::rc::Rc;
 use crate::{
     bytecode::BYTECODE_TABLE,
     class_loader::ClassLoader,
+    field_initialisation::determine_static_fields,
     jvm_model::{
         JvmCache, JvmClass, JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread,
         JvmValue,
@@ -47,7 +48,7 @@ impl JVM {
         {
             (m_index, b_index)
         } else {
-            return Self::mark_as_loaded_and_recurse_load(
+            return Self::initialise_class_state_and_recurse_load(
                 thread,
                 loaded_class,
                 class_loader,
@@ -70,16 +71,26 @@ impl JVM {
             .bx());
         }
 
-        Self::mark_as_loaded_and_recurse_load(thread, loaded_class, class_loader, class_name)
+        Self::initialise_class_state_and_recurse_load(
+            thread,
+            loaded_class,
+            class_loader,
+            class_name,
+        )
     }
 
-    fn mark_as_loaded_and_recurse_load(
+    fn initialise_class_state_and_recurse_load(
         thread: &mut JvmThread,
         loaded_class: &Rc<JvmClass>,
         class_loader: &mut ClassLoader,
         class_name: &str,
     ) -> JvmResult<()> {
-        loaded_class.state.borrow_mut().is_initialised = true;
+        let mut state = loaded_class.state.borrow_mut();
+        state.is_initialised = true;
+        if state.static_fields.is_none() {
+            state.static_fields = Some(determine_static_fields(&loaded_class.class_file));
+        }
+        drop(state);
 
         // recusrively load super classes
         if let Some(super_class_name) = loaded_class.class_file.get_super_class_name() {
@@ -599,6 +610,101 @@ mod tests {
     fn test_field_shadowing() {
         test_field_shadowing_helper("mainCall");
         test_field_shadowing_helper("testCache");
+    }
+
+    #[test]
+    fn test_static_field_self() {
+        test_static_field_helper(
+            "testSelf",
+            vec![JvmValue::Int(10), JvmValue::Int(100)],
+            vec![20, 100],
+            3,
+        );
+    }
+
+    #[test]
+    fn test_static_field_self_cache() {
+        test_static_field_helper(
+            "testSelfCache",
+            vec![JvmValue::Int(10), JvmValue::Int(100)],
+            vec![30, 200],
+            3,
+        );
+    }
+
+    #[test]
+    fn test_static_field_parent() {
+        test_static_field_helper(
+            "testParent",
+            vec![JvmValue::Int(1000), JvmValue::Int(2000)],
+            vec![9000, 10, 3000, 3000],
+            3,
+        );
+    }
+
+    #[test]
+    fn test_static_field_parent_cache() {
+        test_static_field_helper(
+            "testParentCache",
+            vec![JvmValue::Int(1000), JvmValue::Int(2000)],
+            vec![9000, 10, 6000, 6000],
+            3,
+        );
+    }
+
+    #[test]
+    fn test_static_field_other() {
+        test_static_field_helper(
+            "testOther",
+            vec![JvmValue::Int(1000), JvmValue::Int(2000)],
+            vec![2000, 4000, 6000],
+            6,
+        );
+    }
+
+    #[test]
+    fn test_static_field_other_cache() {
+        test_static_field_helper(
+            "testOtherCache",
+            vec![JvmValue::Int(10), JvmValue::Int(20)],
+            vec![1020, 2040, 3060],
+            6,
+        );
+    }
+
+    fn test_static_field_helper(
+        method: impl Into<String>,
+        input: Vec<JvmValue>,
+        expected_outputs: Vec<i32>,
+        expected_loaded: usize,
+    ) {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/StaticFieldTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "StaticFieldTest".to_owned(),
+                method.into(),
+                "(II)[I".to_owned(),
+                input,
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref) {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(expected_outputs.len(), array.len());
+        for (actual, expected) in array.iter().zip(expected_outputs) {
+            assert_eq!(expected, *actual);
+        }
+        assert_eq!(expected_loaded, jvm.class_loader.get_loaded_count());
     }
 
     fn test_field_shadowing_helper(method: impl Into<String>) {

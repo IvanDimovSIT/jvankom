@@ -13,10 +13,10 @@ pub fn dup_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
     let poped_value = frame.operand_stack.last().copied();
     if let Some(value) = poped_value {
-        debug_assert!(match value {
-            JvmValue::Long(_) | JvmValue::Double(_) | JvmValue::Unusable => false,
-            _ => true,
-        });
+        debug_assert!(!matches!(
+            value,
+            JvmValue::Long(_) | JvmValue::Double(_) | JvmValue::Unusable
+        ));
 
         frame.operand_stack.push(value);
     } else {

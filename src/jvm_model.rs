@@ -109,6 +109,10 @@ pub enum JvmError {
         class_name: String,
         field_name: String,
     },
+    StaticFieldNotFound {
+        class_name: String,
+        field_name: String,
+    },
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -194,6 +198,12 @@ impl Display for JvmError {
                 field_name,
             } => {
                 format!("Field not found: {class_name}.{field_name}")
+            }
+            JvmError::StaticFieldNotFound {
+                class_name,
+                field_name,
+            } => {
+                format!("Static field not found: {class_name}.{field_name}")
             }
         };
 
@@ -416,6 +426,15 @@ pub struct FieldInfo {
     pub descriptor_type: DescriptorType,
 }
 
+#[derive(Debug, Clone)]
+pub struct StaticFieldInfo {
+    pub name: String,
+    pub descriptor_type: DescriptorType,
+    /// index into the class file
+    pub field_class_file_index: usize,
+    pub value: JvmValue,
+}
+
 #[derive(Debug)]
 pub struct JvmClass {
     pub class_file: ClassFile,
@@ -434,6 +453,7 @@ impl JvmClass {
 pub struct ClassState {
     pub is_initialised: bool,
     pub non_static_fields: Option<Vec<FieldInfo>>,
+    pub static_fields: Option<Vec<StaticFieldInfo>>,
     pub default_object: Option<HeapObject>,
     pub super_class: Option<Rc<JvmClass>>,
     /// cache that maps indexes from new to classes
@@ -451,6 +471,7 @@ impl Default for ClassState {
             object_creation_cache: ObjectCreationCache::new(),
             v_table: VTable::new(),
             field_access_cache: FieldAccessCache::new(),
+            static_fields: None,
         }
     }
 }

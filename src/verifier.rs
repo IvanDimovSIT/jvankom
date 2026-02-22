@@ -49,7 +49,7 @@ pub fn verify_class_file(
     // TODO: Fix verification!
     // verify_returns(&class)?;
     // verify_load_and_stores(&class)?;
-    // verify_constant_pool(&class)?;
+    verify_constant_pool(&class)?;
     Ok(class)
 }
 

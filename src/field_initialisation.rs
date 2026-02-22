@@ -1,9 +1,42 @@
 use std::rc::Rc;
 
 use crate::{
-    class_file::FieldAccessFlags,
-    jvm_model::{DescriptorType, FieldInfo, HeapObject, JvmClass, JvmResult},
+    class_file::{ClassFile, FieldAccessFlags},
+    jvm_model::{DescriptorType, FieldInfo, HeapObject, JvmClass, JvmResult, StaticFieldInfo},
 };
+
+pub fn determine_static_fields(class_file: &ClassFile) -> Vec<StaticFieldInfo> {
+    let mut static_fields = vec![];
+    for (index, field) in class_file.fields.iter().enumerate() {
+        if !field.access_flags.check_flag(FieldAccessFlags::STATIC_FLAG) {
+            continue;
+        }
+
+        let name = class_file
+            .constant_pool
+            .get_utf8(field.name_index)
+            .expect("Invalid name index: Fields should be verified")
+            .to_owned();
+        let descriptor = class_file
+            .constant_pool
+            .get_utf8(field.descriptor_index)
+            .expect("Invalid descriptor index: Fields should be verified");
+
+        let descriptor_type = parse_field_descriptor(descriptor);
+        let value = descriptor_type.create_default_value();
+
+        let field_info = StaticFieldInfo {
+            name,
+            descriptor_type,
+            value,
+            field_class_file_index: index,
+        };
+
+        static_fields.push(field_info);
+    }
+
+    static_fields
+}
 
 /// initialises an object with all it's fields
 pub fn initialise_object_fields(class: Rc<JvmClass>, field_infos: &[FieldInfo]) -> HeapObject {
