@@ -4,9 +4,9 @@ use crate::{
     bytecode::BYTECODE_TABLE,
     class_loader::ClassLoader,
     field_initialisation::determine_static_fields,
+    jvm_heap::JvmHeap,
     jvm_model::{
-        JvmCache, JvmClass, JvmContext, JvmError, JvmHeap, JvmResult, JvmStackFrame, JvmThread,
-        JvmValue,
+        JvmCache, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmThread, JvmValue,
     },
     native_method_resolver::NativeMethodResolver,
 };
@@ -19,11 +19,11 @@ pub struct JVM {
     native_method_resolver: NativeMethodResolver,
 }
 impl JVM {
-    pub fn new(class_loader: ClassLoader) -> Self {
+    pub fn new(class_loader: ClassLoader, heap: JvmHeap) -> Self {
         Self {
             class_loader,
             threads: vec![],
-            heap: JvmHeap::new(),
+            heap,
             cache: JvmCache::new(),
             native_method_resolver: NativeMethodResolver::new(),
         }
@@ -157,8 +157,8 @@ impl JVM {
 
     fn run_thread(&mut self) -> JvmResult<Option<JvmValue>> {
         assert!(!self.threads.is_empty());
-        let current_thread = &mut self.threads[0];
 
+        let current_thread = &mut self.threads[0];
         while let Some(frame) = current_thread.peek() {
             let instruction = {
                 let method = &frame.class.class_file.methods[frame.method_index];
@@ -206,6 +206,14 @@ impl JVM {
                     native_method_resolver: &mut self.native_method_resolver,
                 },
             )?;
+
+            // single threaded gc
+            if self.heap.should_gc {
+                self.heap.perform_gc(
+                    &[current_thread],
+                    self.class_loader.get_all_loaded_classes(),
+                );
+            }
         }
 
         Ok(None)
@@ -764,6 +772,7 @@ mod tests {
     fn create_jvm(mut contexts: Vec<ClassSource>) -> JVM {
         contexts.push(ClassSource::Jar("java_libraries/rt.jar".to_owned()));
         let class_loader = ClassLoader::new(contexts).unwrap();
-        JVM::new(class_loader)
+        let heap = JvmHeap::new(2, 1000);
+        JVM::new(class_loader, heap)
     }
 }

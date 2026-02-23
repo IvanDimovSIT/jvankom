@@ -1,7 +1,8 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    jvm_model::{JvmClass, JvmError, JvmHeap, JvmResult, JvmThread, JvmValue},
+    jvm_heap::JvmHeap,
+    jvm_model::{JvmClass, JvmError, JvmResult, JvmThread, JvmValue},
     native_method_resolver::object_methods::{object_constructor, register_natives},
 };
 

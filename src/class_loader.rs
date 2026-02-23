@@ -87,6 +87,10 @@ impl ClassLoader {
         }
     }
 
+    pub fn get_all_loaded_classes(&self) -> impl Iterator<Item = &Rc<JvmClass>> {
+        self.loaded_classes.values()
+    }
+
     pub fn get_loaded_count(&self) -> usize {
         self.loaded_classes.len()
     }

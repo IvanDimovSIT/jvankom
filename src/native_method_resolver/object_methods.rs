@@ -1,4 +1,7 @@
-use crate::jvm_model::{JvmHeap, JvmResult, JvmThread, JvmValue};
+use crate::{
+    jvm_heap::JvmHeap,
+    jvm_model::{JvmResult, JvmThread, JvmValue},
+};
 
 pub fn object_constructor(
     _thread: &mut JvmThread,

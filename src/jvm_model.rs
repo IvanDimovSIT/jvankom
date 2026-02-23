@@ -2,7 +2,7 @@ use std::{cell::RefCell, error::Error, fmt::Display, num::NonZeroUsize, rc::Rc};
 
 use crate::{
     class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
-    field_access_cache::FieldAccessCache, method_call_cache::MethodCallCache,
+    field_access_cache::FieldAccessCache, jvm_heap::JvmHeap, method_call_cache::MethodCallCache,
     native_method_resolver::NativeMethodResolver, object_creation_cache::ObjectCreationCache,
     v_table::VTable, verifier::VerifierError,
 };
@@ -271,42 +271,6 @@ pub enum HeapObject {
 }
 
 #[derive(Debug, Clone)]
-pub struct JvmHeap {
-    heap: Vec<Option<HeapObject>>,
-    free_slots: Vec<usize>,
-}
-impl JvmHeap {
-    pub fn new() -> Self {
-        const INITIAL_ALLOCATION: usize = 2;
-        Self {
-            heap: vec![None; INITIAL_ALLOCATION],
-            free_slots: (1..INITIAL_ALLOCATION).collect(),
-        }
-    }
-
-    pub fn get(&mut self, reference: NonZeroUsize) -> &mut HeapObject {
-        if let Some(obj) = &mut self.heap[reference.get()] {
-            obj
-        } else {
-            panic!("Reference {} is invalid", reference);
-        }
-    }
-
-    /// returns the reference to the new object
-    pub fn allocate(&mut self, object: HeapObject) -> NonZeroUsize {
-        if let Some(free_index) = self.free_slots.pop() {
-            debug_assert!(self.heap[free_index].is_none());
-            self.heap[free_index] = Some(object);
-            NonZeroUsize::new(free_index).expect("Index should not be zero")
-        } else {
-            let new_index = self.heap.len();
-            self.heap.push(Some(object));
-            NonZeroUsize::new(new_index).expect("Index should not be zero")
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct JvmStackFrame {
     pub class: Rc<JvmClass>,
     pub method_index: usize,
@@ -392,6 +356,10 @@ impl JvmThread {
 
     pub fn peek(&mut self) -> Option<&mut JvmStackFrame> {
         self.stack.last_mut()
+    }
+
+    pub fn get_stack_frames(&self) -> &[JvmStackFrame] {
+        &self.stack
     }
 }
 

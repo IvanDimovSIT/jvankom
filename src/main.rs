@@ -1,6 +1,7 @@
 use crate::{
     class_loader::{ClassLoader, ClassSource},
     jvm::JVM,
+    jvm_heap::JvmHeap,
     jvm_model::JvmValue,
 };
 
@@ -11,6 +12,7 @@ mod class_parser;
 mod field_access_cache;
 mod field_initialisation;
 mod jvm;
+mod jvm_heap;
 mod jvm_model;
 mod method_call_cache;
 mod native_method_resolver;
@@ -29,7 +31,8 @@ fn main() {
         ClassSource::Jar("test_classes/VirtualCallTest.jar".to_owned()),
     ])
     .unwrap();
-    let mut jvm = JVM::new(class_loader);
+    let heap = JvmHeap::new(1000, 1000);
+    let mut jvm = JVM::new(class_loader, heap);
     let result = jvm.run(
         "VirtualCall1Test".to_owned(),
         "mainCallSelf".to_owned(),
