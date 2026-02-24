@@ -680,6 +680,47 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_gc_max() {
+        test_gc_helper(1, 9, false);
+        test_gc_helper(1, 5, true);
+    }
+
+    #[test]
+    fn test_gc_once() {
+        test_gc_helper(8, 11, true);
+    }
+
+    #[test]
+    fn test_gc_no_gc() {
+        test_gc_helper(1000, 10, false);
+        test_gc_helper(1000, 12, true);
+    }
+
+    fn test_gc_helper(min_allocations: usize, expected_heap: usize, is_secondary_call: bool) {
+        let contexts = vec![
+            ClassSource::Directory("test_classes/".to_owned()),
+            ClassSource::Jar("java_libraries/rt.jar".to_owned()),
+        ];
+        let class_loader = ClassLoader::new(contexts).unwrap();
+        let heap = JvmHeap::new(2, min_allocations);
+        let mut jvm = JVM::new(class_loader, heap);
+        let method = if is_secondary_call {
+            "secondary"
+        } else {
+            "main"
+        }
+        .to_owned();
+        assert!(
+            jvm.run("GCTest".to_owned(), method, "()V".to_owned(), vec![],)
+                .unwrap()
+                .is_none()
+        );
+
+        assert_eq!(2, jvm.class_loader.get_loaded_count());
+        assert_eq!(expected_heap, jvm.heap.get_allocated_count());
+    }
+
     fn test_static_field_helper(
         method: impl Into<String>,
         input: Vec<JvmValue>,
@@ -772,7 +813,7 @@ mod tests {
     fn create_jvm(mut contexts: Vec<ClassSource>) -> JVM {
         contexts.push(ClassSource::Jar("java_libraries/rt.jar".to_owned()));
         let class_loader = ClassLoader::new(contexts).unwrap();
-        let heap = JvmHeap::new(2, 1000);
+        let heap = JvmHeap::new(2, 100);
         JVM::new(class_loader, heap)
     }
 }

@@ -53,6 +53,10 @@ impl JvmHeap {
         reference
     }
 
+    pub fn get_allocated_count(&self) -> usize {
+        self.heap.len() - self.free_slots.len() - 1
+    }
+
     pub fn perform_gc<'a>(
         &mut self,
         threads: &[&JvmThread],
