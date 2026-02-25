@@ -64,7 +64,7 @@ pub struct Bytecode {
 #[derive(Debug, Clone)]
 pub struct InnerClass {
     pub inner_class_info_index: NonZeroUsize,
-    pub outer_class_info_index: NonZeroUsize,
+    pub outer_class_info_index: Option<NonZeroUsize>,
     pub inner_name_index: Option<NonZeroUsize>,
     pub inner_class_access_flags: ClassAccessFlags,
 }

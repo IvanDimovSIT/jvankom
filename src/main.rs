@@ -28,20 +28,20 @@ fn main() {
 
     let class_loader = ClassLoader::new(vec![
         ClassSource::Jar("java_libraries/rt.jar".to_owned()),
-        ClassSource::Jar("test_classes/VirtualCallTest.jar".to_owned()),
+        ClassSource::Directory("test_classes/".to_owned()),
     ])
     .unwrap();
     let heap = JvmHeap::new(1000, 1000);
     let mut jvm = JVM::new(class_loader, heap);
     let result = jvm.run(
-        "VirtualCall1Test".to_owned(),
-        "mainCallSelf".to_owned(),
-        "(I)[I".to_owned(),
-        vec![JvmValue::Int(5)],
+        "TestString".to_owned(),
+        "main".to_owned(),
+        "(I)I".to_owned(),
+        vec![JvmValue::Int(1)],
     );
 
     if let Err(err) = result {
-        println!("Error: {err}");
+        println!("\n\tERROR: {err}\n");
         jvm.get_threads()[0].peek().unwrap().debug_print();
         return;
     }

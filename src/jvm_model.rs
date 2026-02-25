@@ -1,4 +1,10 @@
-use std::{cell::RefCell, error::Error, fmt::Display, num::NonZeroUsize, rc::Rc};
+use std::{
+    cell::RefCell,
+    error::Error,
+    fmt::{Debug, Display},
+    num::NonZeroUsize,
+    rc::Rc,
+};
 
 use crate::{
     class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
@@ -417,7 +423,6 @@ impl JvmClass {
     }
 }
 
-#[derive(Debug)]
 pub struct ClassState {
     pub is_initialised: bool,
     pub non_static_fields: Option<Vec<FieldInfo>>,
@@ -441,5 +446,12 @@ impl Default for ClassState {
             field_access_cache: FieldAccessCache::new(),
             static_fields: None,
         }
+    }
+}
+impl Debug for ClassState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ClassState")
+            .field("is_initialised", &self.is_initialised)
+            .finish()
     }
 }

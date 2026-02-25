@@ -120,7 +120,7 @@ impl<'a> ClassParser<'a> {
         let constant_pool = self.parse_constant_pool()?;
         let access_flags = self.parse_class_access_flags()?;
         let this_class = self.parse_index(constant_pool.len())?;
-        let super_class = self.parse_super_class(constant_pool.len())?;
+        let super_class = self.parse_nullable_index(constant_pool.len())?;
         let interfaces = self.parse_interfaces(constant_pool.len())?;
         let fields = self.parse_fields(&constant_pool)?;
         let methods = self.parse_methods(&constant_pool)?;
@@ -278,7 +278,7 @@ impl<'a> ClassParser<'a> {
         let mut inner_classes = Vec::with_capacity(number_of_classes);
         for _ in 0..number_of_classes {
             let inner_class_info_index = self.parse_index(constant_pool_size)?;
-            let outer_class_info_index = self.parse_index(constant_pool_size)?;
+            let outer_class_info_index = self.parse_nullable_index(constant_pool_size)?;
             let inner_name_index = NonZeroUsize::new(self.parse_u16()? as usize);
             let inner_class_access_flags = self.parse_class_access_flags()?;
 
@@ -381,7 +381,7 @@ impl<'a> ClassParser<'a> {
         Ok(intefaces)
     }
 
-    fn parse_super_class(
+    fn parse_nullable_index(
         &mut self,
         constant_pool_size: usize,
     ) -> Result<Option<NonZeroUsize>, ClassParserError> {

@@ -23,6 +23,7 @@ mod store_instructions;
 
 // From https://docs.oracle.com/javase/specs/jvms/se7/html/jvms-7.html
 pub const NOP: u8 = 0x00;
+pub const ACONST_NULL: u8 = 0x1;
 pub const ICONST_M1: u8 = 0x2;
 pub const ICONST_0: u8 = 0x3;
 pub const ICONST_1: u8 = 0x4;
@@ -32,6 +33,7 @@ pub const ICONST_4: u8 = 0x7;
 pub const ICONST_5: u8 = 0x8;
 pub const BIPUSH: u8 = 0x10;
 pub const SIPUSH: u8 = 0x11;
+pub const LDC: u8 = 0x12;
 pub const ILOAD: u8 = 0x15;
 pub const ALOAD: u8 = 0x19;
 pub const ILOAD_0: u8 = 0x1a;
@@ -89,6 +91,7 @@ impl BytecodeTable {
         let mut table: [BytecodeInstruction; 256] = [handle_unrecognised_instruction; 256];
         let instructions: [(u8, BytecodeInstruction); _] = [
             (NOP, nop_instruction),
+            (ACONST_NULL, null_const_instruction),
             (ICONST_M1, integer_const_instruction::<-1>),
             (ICONST_0, integer_const_instruction::<0>),
             (ICONST_1, integer_const_instruction::<1>),
@@ -98,6 +101,7 @@ impl BytecodeTable {
             (ICONST_5, integer_const_instruction::<5>),
             (BIPUSH, bipush_instruction),
             (SIPUSH, sipush_instruction),
+            (LDC, ldc_instruction),
             (ILOAD, integer_load_n),
             (ALOAD, reference_load_n),
             (ILOAD_0, integer_load::<0>),
@@ -176,6 +180,14 @@ fn handle_unrecognised_instruction(context: JvmContext) -> JvmResult<()> {
     assert_eq!(expected_fn_ptr, instruction_fn_ptr);
 
     Err(JvmError::UnimplementedInstruction(unrecognised_bytecode).bx())
+}
+
+fn validate_cp_index(unvalidated_cp_index: u16) -> JvmResult<NonZeroUsize> {
+    if let Some(index) = NonZeroUsize::new(unvalidated_cp_index as usize) {
+        Ok(index)
+    } else {
+        Err(JvmError::InvalidConstantPoolIndex.bx())
+    }
 }
 
 /// read u16 from 2 bytecode values (moves PC forward by 2)

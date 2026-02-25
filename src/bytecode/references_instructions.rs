@@ -790,14 +790,6 @@ fn construct_virtual_method_error(
     .bx()
 }
 
-fn validate_cp_index(unvalidated_cp_index: u16) -> JvmResult<NonZeroUsize> {
-    if let Some(index) = NonZeroUsize::new(unvalidated_cp_index as usize) {
-        Ok(index)
-    } else {
-        Err(JvmError::InvalidConstantPoolIndex.bx())
-    }
-}
-
 fn pop_params_for_static_or_special<const IS_SPECIAL: bool>(
     types: &[DescriptorType],
     frame: &mut JvmStackFrame,

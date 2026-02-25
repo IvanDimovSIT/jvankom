@@ -41,6 +41,7 @@ impl JVM {
         if loaded_class.state.borrow().is_initialised {
             return Ok(());
         }
+        loaded_class.state.borrow_mut().is_initialised = true;
 
         let (method_index, bytecode_index) = if let Some((m_index, b_index)) = loaded_class
             .class_file
@@ -86,7 +87,6 @@ impl JVM {
         class_name: &str,
     ) -> JvmResult<()> {
         let mut state = loaded_class.state.borrow_mut();
-        state.is_initialised = true;
         if state.static_fields.is_none() {
             state.static_fields = Some(determine_static_fields(&loaded_class.class_file));
         }
@@ -695,6 +695,23 @@ mod tests {
     fn test_gc_no_gc() {
         test_gc_helper(1000, 13, false);
         test_gc_helper(1000, 16, true);
+    }
+
+    #[ignore = "unimplemented instruction 155"]
+    #[test]
+    fn test_string() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "TestString".to_owned(),
+                "main".to_owned(),
+                "(I)I".to_owned(),
+                vec![JvmValue::Int(0)],
+            )
+            .unwrap()
+            .unwrap();
+
+        panic!("result: {result:?}");
     }
 
     fn test_gc_helper(min_allocations: usize, expected_heap: usize, is_secondary_call: bool) {

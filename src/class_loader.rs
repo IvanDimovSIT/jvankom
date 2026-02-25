@@ -238,4 +238,32 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    pub fn test_load_object() {
+        let mut class_loader =
+            ClassLoader::new(vec![ClassSource::Jar("java_libraries/rt.jar".to_owned())]).unwrap();
+
+        let loaded_class = class_loader.get("java/lang/Object").unwrap();
+        assert!(!loaded_class.state.borrow().is_initialised);
+        assert_eq!(1, class_loader.get_loaded_count());
+        assert_eq!(
+            "java/lang/Object",
+            loaded_class.class_file.get_class_name().unwrap()
+        );
+    }
+
+    #[test]
+    pub fn test_load_string() {
+        let mut class_loader =
+            ClassLoader::new(vec![ClassSource::Jar("java_libraries/rt.jar".to_owned())]).unwrap();
+
+        let loaded_class = class_loader.get("java/lang/String").unwrap();
+        assert!(!loaded_class.state.borrow().is_initialised);
+        assert_eq!(1, class_loader.get_loaded_count());
+        assert_eq!(
+            "java/lang/String",
+            loaded_class.class_file.get_class_name().unwrap()
+        );
+    }
 }
