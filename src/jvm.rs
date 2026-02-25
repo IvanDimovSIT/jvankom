@@ -682,19 +682,19 @@ mod tests {
 
     #[test]
     fn test_gc_max() {
-        test_gc_helper(1, 9, false);
-        test_gc_helper(1, 5, true);
+        test_gc_helper(1, 12, false);
+        test_gc_helper(1, 6, true);
     }
 
     #[test]
     fn test_gc_once() {
-        test_gc_helper(8, 11, true);
+        test_gc_helper(10, 15, true);
     }
 
     #[test]
     fn test_gc_no_gc() {
-        test_gc_helper(1000, 10, false);
-        test_gc_helper(1000, 12, true);
+        test_gc_helper(1000, 13, false);
+        test_gc_helper(1000, 16, true);
     }
 
     fn test_gc_helper(min_allocations: usize, expected_heap: usize, is_secondary_call: bool) {

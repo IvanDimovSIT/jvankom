@@ -56,6 +56,38 @@ pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
+pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let array_type_ref = validate_cp_index(read_u16_from_bytecode(frame))?;
+
+    //TODO: use and check arr_type
+    let _arr_type = if let Some(arr_type) = frame
+        .class
+        .class_file
+        .constant_pool
+        .get_class_name(array_type_ref)
+    {
+        arr_type
+    } else {
+        return Err(JvmError::InvalidClassIndex(array_type_ref).bx());
+    };
+
+    let operand_value = pop_int(frame)?;
+    if operand_value < 0 {
+        todo!("Throw NegativeArraySizeException");
+    }
+    let array_size = operand_value as usize;
+
+    let object = HeapObject::ObjectArray(vec![None; array_size]);
+
+    let array_ref = context.heap.allocate(object);
+    frame
+        .operand_stack
+        .push(JvmValue::Reference(Some(array_ref)));
+
+    Ok(())
+}
+
 pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
     context: JvmContext,
 ) -> JvmResult<()> {

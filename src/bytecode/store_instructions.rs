@@ -37,6 +37,14 @@ pub fn store_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
     })
 }
 
+pub fn store_object_array_instruction(context: JvmContext) -> JvmResult<()> {
+    //TODO: check for matching types
+    store_generic_array_instruction(context, pop_reference, |obj| match obj {
+        HeapObject::ObjectArray(items) => items,
+        _ => todo!("Throw ArrayStoreException"),
+    })
+}
+
 #[inline]
 fn store_generic_n_instruction<P, W, T>(
     context: JvmContext,

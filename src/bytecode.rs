@@ -54,6 +54,7 @@ pub const ASTORE_1: u8 = 0x4c;
 pub const ASTORE_2: u8 = 0x4d;
 pub const ASTORE_3: u8 = 0x4e;
 pub const IASTORE: u8 = 0x4f;
+pub const AASTORE: u8 = 0x53;
 pub const POP: u8 = 0x57;
 pub const DUP: u8 = 0x59;
 pub const IADD: u8 = 0x60;
@@ -74,6 +75,7 @@ pub const INVOKESPECIAL: u8 = 0xb7;
 pub const INVOKESTATIC: u8 = 0xb8;
 pub const NEW: u8 = 0xbb;
 pub const NEWARRAY: u8 = 0xbc;
+pub const ANEWARRAY: u8 = 0xbd;
 
 type BytecodeInstruction = fn(JvmContext) -> JvmResult<()>;
 
@@ -124,6 +126,7 @@ impl BytecodeTable {
             (ASTORE_2, store_reference_instruction::<2>),
             (ASTORE_3, store_reference_instruction::<3>),
             (IASTORE, store_integer_array_instruction),
+            (AASTORE, store_object_array_instruction),
             (POP, pop_instruction),
             (DUP, dup_instruction),
             (IRETURN, integer_return_instruction),
@@ -138,6 +141,7 @@ impl BytecodeTable {
             (INVOKESTATIC, invoke_static_or_special_instruction::<false>),
             (NEW, new_instruction),
             (NEWARRAY, new_array_instruction),
+            (ANEWARRAY, new_object_array_instruction),
         ];
 
         let mut i = 0;
