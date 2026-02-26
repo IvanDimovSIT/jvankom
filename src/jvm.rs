@@ -714,6 +714,105 @@ mod tests {
         panic!("result: {result:?}");
     }
 
+    #[test]
+    fn test_comparisons_all_different() {
+        test_comparisons_helper(0, 1, 2, &[67, 0, 67, 0, 0, 67, 67, 0]);
+    }
+
+    #[test]
+    fn test_comparisons_all_different_non_zero() {
+        test_comparisons_helper(1, 2, 3, &[0, 0, 67, 0, 0, 67, 67, 0]);
+    }
+
+    #[test]
+    fn test_comparisons_all_zeroes() {
+        test_comparisons_helper(0, 0, 0, &[67, 67, 0, 0, 67, 0, 67, 0]);
+    }
+
+    #[test]
+    fn test_comparisons_first_equals_third_different() {
+        test_comparisons_helper(3, 3, 2, &[0, 67, 0, 0, 67, 0, 67, 67]);
+    }
+
+    #[test]
+    fn test_comparisons_loop_10() {
+        test_comparisons_loop_helper(10);
+    }
+
+    #[test]
+    fn test_comparisons_loop_2() {
+        test_comparisons_loop_helper(2);
+    }
+
+    #[test]
+    fn test_comparisons_loop_1() {
+        test_comparisons_loop_helper(1);
+    }
+
+    #[test]
+    fn test_comparisons_loop_0() {
+        test_comparisons_loop_helper(0);
+    }
+
+    fn test_comparisons_loop_helper(n: i32) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "ComparisonsTest".to_owned(),
+                "iter".to_owned(),
+                "(I)[I".to_owned(),
+                vec![JvmValue::Int(n)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref) {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(n.max(0) as usize, array.len());
+        if n <= 0 {
+            return;
+        }
+
+        let expected_outputs = 0..n;
+        for (actual, expected) in array.iter().zip(expected_outputs) {
+            assert_eq!(expected, *actual);
+        }
+    }
+
+    fn test_comparisons_helper(a: i32, b: i32, c: i32, expected_outputs: &[i32]) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "ComparisonsTest".to_owned(),
+                "comp".to_owned(),
+                "(III)[I".to_owned(),
+                vec![JvmValue::Int(a), JvmValue::Int(b), JvmValue::Int(c)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref) {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(expected_outputs.len(), array.len());
+        for (actual, expected) in array.iter().zip(expected_outputs) {
+            assert_eq!(*expected, *actual);
+        }
+    }
+
     fn test_gc_helper(min_allocations: usize, expected_heap: usize, is_secondary_call: bool) {
         let contexts = vec![
             ClassSource::Directory("test_classes/".to_owned()),

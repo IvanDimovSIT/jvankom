@@ -95,3 +95,14 @@ pub fn load_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
         JvmValue::Int,
     )
 }
+
+pub fn load_character_array_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_load_array_instruction(
+        context,
+        |obj| match obj {
+            HeapObject::CharacterArray(items) => Ok(items),
+            _ => Err(JvmError::IncompatibleArrayType.bx()),
+        },
+        |char| JvmValue::Int(char as i32),
+    )
+}

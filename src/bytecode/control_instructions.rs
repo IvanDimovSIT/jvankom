@@ -1,9 +1,17 @@
 use super::*;
 
+pub fn goto_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let offset_base = frame.program_counter as isize - 1;
+    let offset = read_i16_from_bytecode(frame) as isize;
+    frame.program_counter = (offset_base + offset) as usize;
+
+    Ok(())
+}
+
 pub fn return_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
     frame.should_return = true;
-
     Ok(())
 }
 

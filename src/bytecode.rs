@@ -5,6 +5,7 @@ use crate::{
     jvm_model::{HeapObject, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmType, JvmValue},
 };
 
+use comparisons_instructions::*;
 use constants_instructions::*;
 use control_instructions::*;
 use load_instructions::*;
@@ -12,6 +13,7 @@ use math_instructions::*;
 use references_instructions::*;
 use store_instructions::*;
 
+mod comparisons_instructions;
 mod constants_instructions;
 mod control_instructions;
 mod load_instructions;
@@ -45,6 +47,7 @@ pub const ALOAD_1: u8 = 0x2b;
 pub const ALOAD_2: u8 = 0x2c;
 pub const ALOAD_3: u8 = 0x2d;
 pub const IALOAD: u8 = 0x2e;
+pub const CALOAD: u8 = 0x34;
 pub const ISTORE: u8 = 0x36;
 pub const ASTORE: u8 = 0x3a;
 pub const ISTORE_0: u8 = 0x3b;
@@ -57,6 +60,7 @@ pub const ASTORE_2: u8 = 0x4d;
 pub const ASTORE_3: u8 = 0x4e;
 pub const IASTORE: u8 = 0x4f;
 pub const AASTORE: u8 = 0x53;
+pub const CASTORE: u8 = 0x55;
 pub const POP: u8 = 0x57;
 pub const DUP: u8 = 0x59;
 pub const IADD: u8 = 0x60;
@@ -65,6 +69,20 @@ pub const IMUL: u8 = 0x68;
 pub const IDIV: u8 = 0x6c;
 pub const IREM: u8 = 0x70;
 pub const INEG: u8 = 0x74;
+pub const IINC: u8 = 0x84;
+pub const IFEQ: u8 = 0x99;
+pub const IFNE: u8 = 0x9a;
+pub const IFLT: u8 = 0x9b;
+pub const IFGE: u8 = 0x9c;
+pub const IFGT: u8 = 0x9d;
+pub const IFLE: u8 = 0x9e;
+pub const IF_ICMPEQ: u8 = 0x9f;
+pub const IF_ICMPNE: u8 = 0xa0;
+pub const IF_ICMPLT: u8 = 0xa1;
+pub const IF_ICMPGE: u8 = 0xa2;
+pub const IF_ICMPGT: u8 = 0xa3;
+pub const IF_ICMPLE: u8 = 0xa4;
+pub const GOTO: u8 = 0xa7;
 pub const IRETURN: u8 = 0xac;
 pub const ARETURN: u8 = 0xb0;
 pub const RETURN: u8 = 0xb1;
@@ -113,6 +131,7 @@ impl BytecodeTable {
             (ALOAD_2, reference_load_instruction::<2>),
             (ALOAD_3, reference_load_instruction::<3>),
             (IALOAD, load_integer_array_instruction),
+            (CALOAD, load_character_array_instruction),
             (ISTORE, store_integer_n_instruction),
             (ASTORE, store_reference_n_instruction),
             (IADD, integer_add),
@@ -131,8 +150,23 @@ impl BytecodeTable {
             (ASTORE_3, store_reference_instruction::<3>),
             (IASTORE, store_integer_array_instruction),
             (AASTORE, store_object_array_instruction),
+            (CASTORE, store_character_array_instruction),
             (POP, pop_instruction),
             (DUP, dup_instruction),
+            (IINC, increment_instruction),
+            (IFEQ, if_equals_instruction),
+            (IFNE, if_not_equals_instruction),
+            (IFLT, if_less_than_instruction),
+            (IFGE, if_greater_than_or_equals_instruction),
+            (IFGT, if_greater_than_instruction),
+            (IFLE, if_less_than_or_equals_instruction),
+            (IF_ICMPEQ, if_compare_equals_instruction),
+            (IF_ICMPNE, if_compare_not_equals_instruction),
+            (IF_ICMPLT, if_compare_less_than_instruction),
+            (IF_ICMPGE, if_compare_greater_than_or_equals_instruction),
+            (IF_ICMPGT, if_compare_greater_than_instruction),
+            (IF_ICMPLE, if_compare_less_than_or_equals_instruction),
+            (GOTO, goto_instruction),
             (IRETURN, integer_return_instruction),
             (ARETURN, object_return_instruction),
             (RETURN, return_instruction),
@@ -205,6 +239,11 @@ fn read_u16_from_bytecode(frame: &mut JvmStackFrame) -> u16 {
     debug_assert!(frame.program_counter < bytecode.code.len());
 
     (index_byte1 << 8) | index_byte2
+}
+
+#[inline]
+fn read_i16_from_bytecode(frame: &mut JvmStackFrame) -> i16 {
+    read_u16_from_bytecode(frame) as i16
 }
 
 #[inline]

@@ -37,6 +37,17 @@ pub fn store_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
     })
 }
 
+pub fn store_character_array_instruction(context: JvmContext) -> JvmResult<()> {
+    store_generic_array_instruction(
+        context,
+        |frame| Ok(pop_int(frame)? as u16),
+        |obj| match obj {
+            HeapObject::CharacterArray(items) => items,
+            _ => todo!("Throw ArrayStoreException"),
+        },
+    )
+}
+
 pub fn store_object_array_instruction(context: JvmContext) -> JvmResult<()> {
     //TODO: check for matching types
     store_generic_array_instruction(context, pop_reference, |obj| match obj {
