@@ -96,6 +96,7 @@ pub const INVOKESTATIC: u8 = 0xb8;
 pub const NEW: u8 = 0xbb;
 pub const NEWARRAY: u8 = 0xbc;
 pub const ANEWARRAY: u8 = 0xbd;
+pub const ARRAYLENGTH: u8 = 0xbe;
 
 type BytecodeInstruction = fn(JvmContext) -> JvmResult<()>;
 
@@ -134,12 +135,12 @@ impl BytecodeTable {
             (CALOAD, load_character_array_instruction),
             (ISTORE, store_integer_n_instruction),
             (ASTORE, store_reference_n_instruction),
-            (IADD, integer_add),
-            (ISUB, integer_subtract),
-            (IMUL, integer_muliply),
-            (INEG, integer_negate),
-            (IDIV, integer_divide),
-            (IREM, integer_remainder),
+            (IADD, integer_add_instruction),
+            (ISUB, integer_subtract_instruction),
+            (IMUL, integer_muliply_instruction),
+            (INEG, integer_negate_instruction),
+            (IDIV, integer_divide_instruction),
+            (IREM, integer_remainder_instruction),
             (ISTORE_0, store_integer_instruction::<0>),
             (ISTORE_1, store_integer_instruction::<1>),
             (ISTORE_2, store_integer_instruction::<2>),
@@ -180,6 +181,7 @@ impl BytecodeTable {
             (NEW, new_instruction),
             (NEWARRAY, new_array_instruction),
             (ANEWARRAY, new_object_array_instruction),
+            (ARRAYLENGTH, array_length_instruction),
         ];
 
         let mut i = 0;

@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use crate::{
     bytecode::BYTECODE_TABLE,
+    class_file::MethodAccessFlags,
     class_loader::ClassLoader,
     field_initialisation::determine_static_fields,
     jvm_heap::JvmHeap,
@@ -127,6 +128,17 @@ impl JVM {
             }
             .bx());
         };
+
+        if !loaded_class.class_file.methods[method_index]
+            .access_flags
+            .check_flag(MethodAccessFlags::STATIC_FLAG)
+        {
+            return Err(JvmError::ExpectedStaticMethod {
+                method_name,
+                method_descriptor,
+            }
+            .bx());
+        }
 
         if bytecode_index.is_none() {
             return Err(JvmError::ExpectedNonNativeMethod {
@@ -697,7 +709,7 @@ mod tests {
         test_gc_helper(1000, 16, true);
     }
 
-    #[ignore = "unimplemented instruction 155"]
+    #[ignore = "get field throws NullPointerException - likely uniniitalised String - called arraylength on null array"]
     #[test]
     fn test_string() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
@@ -752,6 +764,41 @@ mod tests {
     #[test]
     fn test_comparisons_loop_0() {
         test_comparisons_loop_helper(0);
+    }
+
+    #[test]
+    fn test_array_length_100() {
+        test_array_length_helper(100);
+    }
+
+    #[test]
+    fn test_array_length_1() {
+        test_array_length_helper(1);
+    }
+
+    #[test]
+    fn test_array_length_0() {
+        test_array_length_helper(0);
+    }
+
+    fn test_array_length_helper(n: i32) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "ArrayLengthTest".to_owned(),
+                "getLength".to_owned(),
+                "(I)I".to_owned(),
+                vec![JvmValue::Int(n)],
+            )
+            .unwrap()
+            .unwrap();
+
+        let len = match result {
+            JvmValue::Int(int) => int,
+            _ => panic!("expected int"),
+        };
+
+        assert_eq!(n, len);
     }
 
     fn test_comparisons_loop_helper(n: i32) {

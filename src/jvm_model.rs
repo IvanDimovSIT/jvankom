@@ -106,6 +106,10 @@ pub enum JvmError {
         method_name: String,
         method_descriptor: String,
     },
+    ExpectedStaticMethod {
+        method_name: String,
+        method_descriptor: String,
+    },
     NativeMethodImplementationNotFound {
         class_name: String,
         method_name: String,
@@ -119,6 +123,7 @@ pub enum JvmError {
         class_name: String,
         field_name: String,
     },
+    ExpectedArray,
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -190,6 +195,12 @@ impl Display for JvmError {
             } => {
                 format!("Expected method to not be native: {method_name}{method_descriptor}")
             }
+            JvmError::ExpectedStaticMethod {
+                method_name,
+                method_descriptor,
+            } => {
+                format!("Expected method to be static: {method_name}{method_descriptor}")
+            }
             JvmError::NativeMethodImplementationNotFound {
                 class_name,
                 method_name,
@@ -211,6 +222,7 @@ impl Display for JvmError {
             } => {
                 format!("Static field not found: {class_name}.{field_name}")
             }
+            JvmError::ExpectedArray => "Expected array object".to_owned(),
         };
 
         f.write_str(&description)
@@ -330,7 +342,7 @@ impl JvmStackFrame {
         let locals = &self.local_variables;
 
         println!(
-            "code:\n{bytecode:?}\nprogram counter:\n{program_counter}\nstack:\n{stack:?}\nlocals:\n{locals:?}"
+            "code:\n{bytecode:?}\nprogram counter:\n{program_counter}\nstack:\n{stack:?}\nlocals:\n{locals:?}\n"
         );
     }
 }

@@ -23,6 +23,33 @@ const SHORT_ARR: u8 = 9;
 const INT_ARR: u8 = 10;
 const LONG_ARR: u8 = 11;
 
+pub fn array_length_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let array_ref = if let Some(array_ref) = pop_reference(frame)? {
+        array_ref
+    } else {
+        todo!("Throw NullPointerException");
+    };
+
+    let array = context.heap.get(array_ref);
+    let array_len = match array {
+        HeapObject::IntArray(items) => items.len(),
+        HeapObject::ByteArray(items) => items.len(),
+        HeapObject::BooleanArray(items) => items.len(),
+        HeapObject::CharacterArray(items) => items.len(),
+        HeapObject::ShortArray(items) => items.len(),
+        HeapObject::FloatArray(items) => items.len(),
+        HeapObject::DoubleArray(items) => items.len(),
+        HeapObject::LongArray(items) => items.len(),
+        HeapObject::ObjectArray(items) => items.len(),
+        _ => return Err(JvmError::ExpectedArray.bx()),
+    } as i32;
+
+    frame.operand_stack.push(JvmValue::Int(array_len));
+
+    Ok(())
+}
+
 pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
     let bytecode =

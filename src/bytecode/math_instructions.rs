@@ -31,76 +31,85 @@ pub fn increment_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
-pub fn integer_add(context: JvmContext) -> JvmResult<()> {
+pub fn integer_add_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_two_operand_instruction(context, pop_int, |a, b| JvmValue::Int(a.wrapping_add(b)))
+}
+
+pub fn integer_subtract_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_two_operand_instruction(context, pop_int, |a, b| JvmValue::Int(a.wrapping_sub(b)))
+}
+
+pub fn integer_muliply_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_two_operand_instruction(context, pop_int, |a, b| JvmValue::Int(a * b))
+}
+
+pub fn integer_negate_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_one_operand_instruction(context, pop_int, |x| JvmValue::Int(-x))
+}
+
+pub fn integer_divide_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_dvision_instruction(context, pop_int, |a, b| JvmValue::Int(a / b))
+}
+
+pub fn integer_remainder_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_dvision_instruction(context, pop_int, |a, b| JvmValue::Int(a % b))
+}
+
+#[inline]
+fn generic_two_operand_instruction<P, T, M>(
+    context: JvmContext,
+    pop_fn: P,
+    math_fn: M,
+) -> JvmResult<()>
+where
+    P: Fn(&mut JvmStackFrame) -> JvmResult<T>,
+    M: FnOnce(T, T) -> JvmValue,
+{
     let frame = context.current_thread.peek().unwrap();
 
-    let value_b = pop_int(frame)?;
-    let value_a = pop_int(frame)?;
+    let value_b = pop_fn(frame)?;
+    let value_a = pop_fn(frame)?;
 
-    let result_value = JvmValue::Int(value_a.wrapping_add(value_b));
+    let result_value = math_fn(value_a, value_b);
     frame.operand_stack.push(result_value);
 
     Ok(())
 }
 
-pub fn integer_subtract(context: JvmContext) -> JvmResult<()> {
+#[inline]
+fn generic_one_operand_instruction<P, T, M>(
+    context: JvmContext,
+    pop_fn: P,
+    math_fn: M,
+) -> JvmResult<()>
+where
+    P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
+    M: FnOnce(T) -> JvmValue,
+{
     let frame = context.current_thread.peek().unwrap();
-
-    let value_b = pop_int(frame)?;
-    let value_a = pop_int(frame)?;
-
-    let result_value = JvmValue::Int(value_a.wrapping_sub(value_b));
+    let value = pop_fn(frame)?;
+    let result_value = math_fn(value);
     frame.operand_stack.push(result_value);
 
     Ok(())
 }
 
-pub fn integer_muliply(context: JvmContext) -> JvmResult<()> {
+/// same as generic_two_operand_instruction but checks if b != 0
+fn generic_dvision_instruction<P, T, M>(context: JvmContext, pop_fn: P, math_fn: M) -> JvmResult<()>
+where
+    P: Fn(&mut JvmStackFrame) -> JvmResult<T>,
+    M: FnOnce(T, T) -> JvmValue,
+    T: PartialEq + Default,
+{
     let frame = context.current_thread.peek().unwrap();
 
-    let value_b = pop_int(frame)?;
-    let value_a = pop_int(frame)?;
-
-    let result_value = JvmValue::Int(value_a * value_b);
-    frame.operand_stack.push(result_value);
-
-    Ok(())
-}
-
-pub fn integer_negate(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
-    let value = pop_int(frame)?;
-    let result_value = JvmValue::Int(-value);
-    frame.operand_stack.push(result_value);
-
-    Ok(())
-}
-
-pub fn integer_divide(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
-
-    let value_b = pop_int(frame)?;
-    let value_a = pop_int(frame)?;
-    if value_b == 0 {
+    let value_b = pop_fn(frame)?;
+    let value_a = pop_fn(frame)?;
+    if value_b == T::default() {
         todo!("Throw ArithmeticException");
     }
 
-    let result_value = JvmValue::Int(value_a / value_b);
-    frame.operand_stack.push(result_value);
-
-    Ok(())
-}
-
-pub fn integer_remainder(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
-
-    let value_b = pop_int(frame)?;
-    let value_a = pop_int(frame)?;
-    if value_b == 0 {
-        todo!("Throw ArithmeticException");
-    }
-
-    let result_value = JvmValue::Int(value_a % value_b);
+    let result_value = math_fn(value_a, value_b);
     frame.operand_stack.push(result_value);
 
     Ok(())

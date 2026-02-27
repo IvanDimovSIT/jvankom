@@ -42,7 +42,24 @@ fn main() {
 
     if let Err(err) = result {
         println!("\n\tERROR: {err}\n");
-        jvm.get_threads()[0].peek().unwrap().debug_print();
+        let frame = jvm.get_threads()[0].peek().unwrap().clone();
+        frame.debug_print();
+        let method_index = frame.class.class_file.methods[frame.method_index].name_index;
+        let descriptor_index = frame.class.class_file.methods[frame.method_index].descriptor_index;
+        let method = frame
+            .class
+            .class_file
+            .constant_pool
+            .get_utf8(method_index)
+            .unwrap();
+        let desc = frame
+            .class
+            .class_file
+            .constant_pool
+            .get_utf8(descriptor_index)
+            .unwrap();
+        println!("=>{method}{desc}");
+
         return;
     }
 
