@@ -684,6 +684,8 @@ impl<'a> ClassParser<'a> {
 
 #[cfg(test)]
 mod tests {
+    use crate::jvm::OBJECT_CLASS_NAME;
+
     use super::*;
 
     const TEST_CLASS_FILE_PATH: &str = "test_classes/Test.class";
@@ -692,7 +694,7 @@ mod tests {
     fn test_parse_ok() {
         let class = parse(TEST_CLASS_FILE_PATH).unwrap().0;
         assert_eq!("Test", class.get_class_name().unwrap());
-        assert_eq!("java/lang/Object", class.get_super_class_name().unwrap());
+        assert_eq!(OBJECT_CLASS_NAME, class.get_super_class_name().unwrap());
         assert_eq!(1, class.fields.len());
         assert_eq!(65, class.version.major);
         assert_eq!(0, class.version.minor);

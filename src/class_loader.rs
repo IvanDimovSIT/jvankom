@@ -175,6 +175,8 @@ impl ClassLoader {
 
 #[cfg(test)]
 mod tests {
+    use crate::jvm::OBJECT_CLASS_NAME;
+
     use super::*;
 
     #[test]
@@ -244,11 +246,11 @@ mod tests {
         let mut class_loader =
             ClassLoader::new(vec![ClassSource::Jar("java_libraries/rt.jar".to_owned())]).unwrap();
 
-        let loaded_class = class_loader.get("java/lang/Object").unwrap();
+        let loaded_class = class_loader.get(OBJECT_CLASS_NAME).unwrap();
         assert!(!loaded_class.state.borrow().is_initialised);
         assert_eq!(1, class_loader.get_loaded_count());
         assert_eq!(
-            "java/lang/Object",
+            OBJECT_CLASS_NAME,
             loaded_class.class_file.get_class_name().unwrap()
         );
     }

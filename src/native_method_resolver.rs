@@ -1,6 +1,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
+    jvm::OBJECT_CLASS_NAME,
     jvm_heap::JvmHeap,
     jvm_model::{JvmClass, JvmError, JvmResult, JvmThread, JvmValue},
     native_method_resolver::object_methods::{object_constructor, register_natives},
@@ -11,9 +12,9 @@ mod object_methods;
 type NativeMethodHandler = fn(&mut JvmThread, &mut JvmHeap, Vec<JvmValue>) -> JvmResult<()>;
 
 const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 2] = [
-    ("java/lang/Object", "<init>", "()V", object_constructor),
+    (OBJECT_CLASS_NAME, "<init>", "()V", object_constructor),
     (
-        "java/lang/Object",
+        OBJECT_CLASS_NAME,
         "registerNatives",
         "()V",
         register_natives,

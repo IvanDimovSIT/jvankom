@@ -1,13 +1,15 @@
+use std::rc::Rc;
+
 use crate::{
     class_file::ConstantValue,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
-    jvm::JVM,
+    jvm::{JVM, STRING_CLASS_NAME},
     jvm_heap::JvmHeap,
+    jvm_model::JvmClass,
+    string_pool::StringPool,
 };
 
 use super::*;
-
-const STRING_CLASS_NAME: &str = "java/lang/String";
 
 pub fn nop_instruction(_context: JvmContext) -> JvmResult<()> {
     Ok(())
@@ -79,17 +81,7 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
                 return Ok(());
             }
 
-            let mut string_obj = if let Some(str) =
-                string_class.state.borrow().default_object.clone()
-            {
-                str
-            } else {
-                let non_static_field_types = determine_non_static_field_types(&string_class)?;
-                let str = initialise_object_fields(string_class.clone(), &non_static_field_types);
-                string_class.state.borrow_mut().default_object = Some(str.clone());
-
-                str
-            };
+            let mut string_obj = create_string_object(&string_class)?;
             let text = frame
                 .class
                 .class_file
@@ -97,7 +89,10 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
                 .get_utf8(*utf8_index)
                 .expect("Should be validated");
 
-            initialise_string_object(&mut string_obj, text, context.heap);
+            context
+                .cache
+                .string_pool
+                .initialise_string_fields(text, &mut string_obj, context.heap);
 
             let reference = context.heap.allocate(string_obj);
 
@@ -124,7 +119,24 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
-fn initialise_string_object(obj: &mut HeapObject, text: &str, heap: &mut JvmHeap) {
-    // TODO: implement string initialisation
-    println!("ERROR: initialise_string_object not implemented")
+fn create_string_object(string_class: &Rc<JvmClass>) -> JvmResult<HeapObject> {
+    debug_assert_eq!(
+        STRING_CLASS_NAME,
+        string_class
+            .class_file
+            .get_class_name()
+            .expect("String class not initialised")
+    );
+
+    if let Some(str) = string_class.state.borrow().default_object.clone() {
+        Ok(str)
+    } else {
+        let non_static_field_types = determine_non_static_field_types(&string_class)?;
+        let str = initialise_object_fields(string_class.clone(), &non_static_field_types);
+        let mut state = string_class.state.borrow_mut();
+        state.non_static_fields = Some(non_static_field_types);
+        state.default_object = Some(str.clone());
+
+        Ok(str)
+    }
 }

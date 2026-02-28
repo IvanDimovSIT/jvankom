@@ -12,6 +12,9 @@ use crate::{
     native_method_resolver::NativeMethodResolver,
 };
 
+pub const STRING_CLASS_NAME: &str = "java/lang/String";
+pub const OBJECT_CLASS_NAME: &str = "java/lang/Object";
+
 pub struct JVM {
     class_loader: ClassLoader,
     threads: Vec<JvmThread>,
@@ -709,21 +712,48 @@ mod tests {
         test_gc_helper(1000, 16, true);
     }
 
-    #[ignore = "get field throws NullPointerException - likely uniniitalised String - called arraylength on null array"]
     #[test]
-    fn test_string() {
+    fn test_string_char_at() {
+        for index in 0..("Hello".len()) {
+            test_string_char_at_helper(index);
+        }
+    }
+
+    fn test_string_char_at_helper(index: usize) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
             .run(
                 "TestString".to_owned(),
                 "main".to_owned(),
                 "(I)I".to_owned(),
-                vec![JvmValue::Int(0)],
+                vec![JvmValue::Int(index as i32)],
             )
             .unwrap()
             .unwrap();
 
-        panic!("result: {result:?}");
+        match result {
+            JvmValue::Int(ascii) => {
+                let char = "Hello".chars().collect::<Vec<_>>();
+                assert_eq!(char[index] as u16, ascii as u16)
+            }
+            _ => panic!("expected int"),
+        }
+        let loaded_classes: Vec<_> = jvm
+            .class_loader
+            .get_all_loaded_classes()
+            .map(|c| c.class_file.get_class_name().unwrap())
+            .collect();
+
+        assert_eq!(4, jvm.class_loader.get_loaded_count());
+        let expected_loaded_classes = [
+            "java/lang/String$CaseInsensitiveComparator",
+            OBJECT_CLASS_NAME,
+            STRING_CLASS_NAME,
+            "TestString",
+        ];
+        for expected in expected_loaded_classes {
+            assert!(loaded_classes.contains(&expected));
+        }
     }
 
     #[test]

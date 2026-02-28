@@ -6,7 +6,7 @@ use crate::{
     class_loader::ClassLoader,
     field_access_cache::FieldAccessInfo,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
-    jvm::JVM,
+    jvm::{JVM, OBJECT_CLASS_NAME},
     jvm_model::{DescriptorType, JvmClass, StaticFieldInfo},
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
     v_table::VTableEntry,
@@ -388,7 +388,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
 
     let object_class = match called_object {
         HeapObject::Object { class, fields: _ } => class.clone(),
-        _ => context.class_loader.get("java/lang/Object")?,
+        _ => context.class_loader.get(OBJECT_CLASS_NAME)?,
     };
 
     let v_table_entry = if let Some(v_table_entry) = object_class

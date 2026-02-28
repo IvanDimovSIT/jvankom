@@ -10,7 +10,7 @@ use crate::{
     class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
     field_access_cache::FieldAccessCache, jvm_heap::JvmHeap, method_call_cache::MethodCallCache,
     native_method_resolver::NativeMethodResolver, object_creation_cache::ObjectCreationCache,
-    v_table::VTable, verifier::VerifierError,
+    string_pool::StringPool, v_table::VTable, verifier::VerifierError,
 };
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
@@ -384,11 +384,13 @@ impl JvmThread {
 #[derive(Debug)]
 pub struct JvmCache {
     pub method_call_cache: MethodCallCache,
+    pub string_pool: StringPool,
 }
 impl JvmCache {
     pub fn new() -> Self {
         Self {
             method_call_cache: MethodCallCache::new(),
+            string_pool: StringPool::new(),
         }
     }
 }
