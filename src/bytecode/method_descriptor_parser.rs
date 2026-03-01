@@ -1,5 +1,5 @@
 use crate::{
-    bytecode::{pop_int, pop_long, pop_reference},
+    bytecode::{pop_double, pop_float, pop_int, pop_long, pop_reference},
     jvm_model::{DescriptorType, JvmError, JvmResult, JvmStackFrame, JvmValue},
 };
 
@@ -89,6 +89,13 @@ pub fn pop_params(types: &[DescriptorType], frame: &mut JvmStackFrame) -> JvmRes
             }
             DescriptorType::Reference => {
                 params.insert(0, JvmValue::Reference(pop_reference(frame)?));
+            }
+            DescriptorType::Float => {
+                params.insert(0, JvmValue::Float(pop_float(frame)?));
+            }
+            DescriptorType::Double => {
+                params.insert(0, JvmValue::Unusable);
+                params.insert(0, JvmValue::Double(pop_double(frame)?));
             }
             _ => unimplemented!("{:?}", t),
         };

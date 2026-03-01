@@ -1,17 +1,22 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    jvm::{OBJECT_CLASS_NAME, SYSTEM_CLASS_NAME},
+    jvm::{
+        CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME, OBJECT_CLASS_NAME, SYSTEM_CLASS_NAME,
+    },
     jvm_heap::JvmHeap,
     jvm_model::{JvmClass, JvmError, JvmResult, JvmThread, JvmValue},
 };
 
+mod class_methods;
+mod double_methods;
+mod float_methods;
 mod object_methods;
 mod system_methods;
 
 type NativeMethodHandler = fn(&mut JvmThread, &mut JvmHeap, Vec<JvmValue>) -> JvmResult<()>;
 
-const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 3] = [
+const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 10] = [
     (
         OBJECT_CLASS_NAME,
         "<init>",
@@ -29,6 +34,48 @@ const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 3] = [
         "registerNatives",
         "()V",
         system_methods::register_natives,
+    ),
+    (
+        SYSTEM_CLASS_NAME,
+        "arraycopy",
+        "(Ljava/lang/Object;ILjava/lang/Object;II)V",
+        system_methods::array_copy,
+    ),
+    (
+        CLASS_CLASS_NAME,
+        "registerNatives",
+        "()V",
+        class_methods::register_natives,
+    ),
+    (
+        CLASS_CLASS_NAME,
+        "desiredAssertionStatus0",
+        "(Ljava/lang/Class;)Z",
+        class_methods::desired_assertion_status0,
+    ),
+    (
+        CLASS_CLASS_NAME,
+        "getPrimitiveClass",
+        "(Ljava/lang/String;)Ljava/lang/Class;",
+        class_methods::get_primitive_class,
+    ),
+    (
+        FLOAT_CLASS_NAME,
+        "floatToRawIntBits",
+        "(F)I",
+        float_methods::float_to_raw_int_bits,
+    ),
+    (
+        DOUBLE_CLASS_NAME,
+        "doubleToRawLongBits",
+        "(D)J",
+        double_methods::double_to_raw_long_bits,
+    ),
+    (
+        DOUBLE_CLASS_NAME,
+        "longBitsToDouble",
+        "(J)D",
+        double_methods::long_bits_to_double,
     ),
 ];
 

@@ -39,3 +39,7 @@ pub fn integer_return_instruction(context: JvmContext) -> JvmResult<()> {
 pub fn object_return_instruction(context: JvmContext) -> JvmResult<()> {
     generic_return_instruction(context, expect_reference)
 }
+
+pub fn double_return_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_return_instruction(context, expect_double)
+}

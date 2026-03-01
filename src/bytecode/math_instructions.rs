@@ -55,6 +55,37 @@ pub fn integer_remainder_instruction(context: JvmContext) -> JvmResult<()> {
     generic_dvision_instruction(context, pop_int, |a, b| JvmValue::Int(a % b))
 }
 
+pub fn long_and_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_two_operand_instruction(context, pop_long, |a, b| JvmValue::Long(a & b))
+}
+
+pub fn long_add_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_two_operand_instruction(context, pop_long, |a, b| JvmValue::Long(a + b))
+}
+
+pub fn shift_left_long_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_shift_instruction(context, pop_long, |a, b| {
+        JvmValue::Long(a << (b & 0b111111) as u32)
+    })
+}
+
+#[inline]
+fn generic_shift_instruction<P, T, M>(context: JvmContext, pop_fn: P, math_fn: M) -> JvmResult<()>
+where
+    P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
+    M: FnOnce(T, i32) -> JvmValue,
+{
+    let frame = context.current_thread.peek().unwrap();
+
+    let value_2 = pop_int(frame)?;
+    let value_1 = pop_fn(frame)?;
+
+    let result_value = math_fn(value_1, value_2);
+    frame.operand_stack.push(result_value);
+
+    Ok(())
+}
+
 #[inline]
 fn generic_two_operand_instruction<P, T, M>(
     context: JvmContext,

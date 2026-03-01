@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::{
     class_file::ConstantValue,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
-    jvm::{JVM, STRING_CLASS_NAME},
+    jvm::{CLASS_CLASS_NAME, JVM, STRING_CLASS_NAME},
     jvm_heap::JvmHeap,
     jvm_model::JvmClass,
     string_pool::StringPool,
@@ -81,8 +81,34 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
 
     let value = match frame.class.class_file.constant_pool.get(constant_index) {
         ConstantValue::Int(int) => JvmValue::Int(*int),
-        ConstantValue::Float(_) => unimplemented!(),
-        ConstantValue::Class { name_index } => unimplemented!(),
+        ConstantValue::Float(float) => JvmValue::Float(*float),
+        ConstantValue::Class { name_index } => {
+            let class_class = context.class_loader.get(CLASS_CLASS_NAME)?;
+
+            // initialise class and rewind
+            if !class_class.state.borrow().is_initialised {
+                frame.program_counter -= 2;
+                JVM::initialise_class(
+                    context.current_thread,
+                    &class_class,
+                    context.class_loader,
+                    CLASS_CLASS_NAME,
+                )?;
+                return Ok(());
+            }
+
+            let class_name = frame
+                .class
+                .class_file
+                .constant_pool
+                .get_utf8(*name_index)
+                .expect("Should be validated");
+
+            let obj = create_class_object(&class_class, class_name)?;
+            let class_obj_ref = context.heap.allocate(obj);
+
+            JvmValue::Reference(Some(class_obj_ref))
+        }
         ConstantValue::String { utf8_index } => {
             let string_class = context.class_loader.get(STRING_CLASS_NAME)?;
 
@@ -148,7 +174,7 @@ fn create_string_object(string_class: &Rc<JvmClass>) -> JvmResult<HeapObject> {
     if let Some(str) = string_class.state.borrow().default_object.clone() {
         Ok(str)
     } else {
-        let non_static_field_types = determine_non_static_field_types(&string_class)?;
+        let non_static_field_types = determine_non_static_field_types(string_class)?;
         let str = initialise_object_fields(string_class.clone(), &non_static_field_types);
         let mut state = string_class.state.borrow_mut();
         state.non_static_fields = Some(non_static_field_types);
@@ -156,4 +182,28 @@ fn create_string_object(string_class: &Rc<JvmClass>) -> JvmResult<HeapObject> {
 
         Ok(str)
     }
+}
+
+fn create_class_object(class_class: &Rc<JvmClass>, _class_name: &str) -> JvmResult<HeapObject> {
+    debug_assert_eq!(
+        CLASS_CLASS_NAME,
+        class_class
+            .class_file
+            .get_class_name()
+            .expect("String class not initialised")
+    );
+
+    if let Some(cl) = class_class.state.borrow().default_object.clone() {
+        Ok(cl)
+    } else {
+        let non_static_field_types = determine_non_static_field_types(class_class)?;
+        let str = initialise_object_fields(class_class.clone(), &non_static_field_types);
+        let mut state = class_class.state.borrow_mut();
+        state.non_static_fields = Some(non_static_field_types);
+        state.default_object = Some(str.clone());
+
+        Ok(str)
+    }
+
+    // TODO: initilaise Class object
 }

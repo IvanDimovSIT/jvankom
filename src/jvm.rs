@@ -13,8 +13,11 @@ use crate::{
 };
 
 pub const STRING_CLASS_NAME: &str = "java/lang/String";
+pub const CLASS_CLASS_NAME: &str = "java/lang/Class";
 pub const OBJECT_CLASS_NAME: &str = "java/lang/Object";
 pub const SYSTEM_CLASS_NAME: &str = "java/lang/System";
+pub const FLOAT_CLASS_NAME: &str = "java/lang/Float";
+pub const DOUBLE_CLASS_NAME: &str = "java/lang/Double";
 
 pub struct JVM {
     class_loader: ClassLoader,
@@ -749,12 +752,39 @@ mod tests {
         }
     }
 
-    #[ignore = "NativeMethodImplementationNotFound"]
     #[test]
     fn test_string_concat() {
         for index in 0..("_Hello_".len()) {
             test_string_concat_helper('a' as i32, 'b' as i32, index);
         }
+    }
+
+    #[test]
+    fn test_string_string_builder() {
+        test_string_string_builder_helper(0, 'a' as i32);
+        test_string_string_builder_helper(1, 'b' as i32);
+        test_string_string_builder_helper(2, 'c' as i32);
+    }
+
+    fn test_string_string_builder_helper(index: usize, expected: i32) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "TestString".to_owned(),
+                "testSB".to_owned(),
+                "(I)I".to_owned(),
+                vec![JvmValue::Int(index as i32)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(ascii) => {
+                assert_eq!(expected, ascii)
+            }
+            _ => panic!("expected int"),
+        }
+        assert_eq!(13, jvm.class_loader.get_loaded_count());
     }
 
     fn test_string_concat_helper(char_a: i32, char_b: i32, index: usize) {
@@ -788,7 +818,7 @@ mod tests {
             .map(|c| c.class_file.get_class_name().unwrap())
             .collect();
 
-        assert_eq!(4, jvm.class_loader.get_loaded_count());
+        assert_eq!(13, jvm.class_loader.get_loaded_count());
         let expected_loaded_classes = [
             "java/lang/String$CaseInsensitiveComparator",
             OBJECT_CLASS_NAME,

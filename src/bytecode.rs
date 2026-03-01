@@ -71,11 +71,14 @@ pub const POP: u8 = 0x57;
 pub const DUP: u8 = 0x59;
 pub const DUP_X1: u8 = 0x5a;
 pub const IADD: u8 = 0x60;
+pub const LADD: u8 = 0x61;
 pub const ISUB: u8 = 0x64;
 pub const IMUL: u8 = 0x68;
 pub const IDIV: u8 = 0x6c;
 pub const IREM: u8 = 0x70;
 pub const INEG: u8 = 0x74;
+pub const LSHL: u8 = 0x79;
+pub const LAND: u8 = 0x7f;
 pub const IINC: u8 = 0x84;
 pub const I2L: u8 = 0x85;
 pub const IFEQ: u8 = 0x99;
@@ -92,6 +95,7 @@ pub const IF_ICMPGT: u8 = 0xa3;
 pub const IF_ICMPLE: u8 = 0xa4;
 pub const GOTO: u8 = 0xa7;
 pub const IRETURN: u8 = 0xac;
+pub const DRETURN: u8 = 0xaf;
 pub const ARETURN: u8 = 0xb0;
 pub const RETURN: u8 = 0xb1;
 pub const GETSTATIC: u8 = 0xb2;
@@ -147,9 +151,12 @@ impl BytecodeTable {
             (ISTORE, store_integer_n_instruction),
             (ASTORE, store_reference_n_instruction),
             (IADD, integer_add_instruction),
+            (LADD, long_add_instruction),
             (ISUB, integer_subtract_instruction),
             (IMUL, integer_muliply_instruction),
             (INEG, integer_negate_instruction),
+            (LSHL, shift_left_long_instruction),
+            (LAND, long_and_instruction),
             (IDIV, integer_divide_instruction),
             (IREM, integer_remainder_instruction),
             (ISTORE_0, store_integer_instruction::<0>),
@@ -183,6 +190,7 @@ impl BytecodeTable {
             (IF_ICMPLE, if_compare_less_than_or_equals_instruction),
             (GOTO, goto_instruction),
             (IRETURN, integer_return_instruction),
+            (DRETURN, double_return_instruction),
             (ARETURN, object_return_instruction),
             (RETURN, return_instruction),
             (GETSTATIC, get_static_instruction),
@@ -292,6 +300,24 @@ fn pop_int(frame: &mut JvmStackFrame) -> JvmResult<i32> {
 }
 
 #[inline]
+fn pop_double(frame: &mut JvmStackFrame) -> JvmResult<f64> {
+    if let Some(a) = frame.operand_stack.pop() {
+        expect_double(a)
+    } else {
+        Err(JvmError::NoOperandFound.bx())
+    }
+}
+
+#[inline]
+fn pop_float(frame: &mut JvmStackFrame) -> JvmResult<f32> {
+    if let Some(a) = frame.operand_stack.pop() {
+        expect_float(a)
+    } else {
+        Err(JvmError::NoOperandFound.bx())
+    }
+}
+
+#[inline]
 fn pop_reference(frame: &mut JvmStackFrame) -> JvmResult<Option<NonZeroUsize>> {
     if let Some(a) = frame.operand_stack.pop() {
         expect_reference(a)
@@ -301,7 +327,31 @@ fn pop_reference(frame: &mut JvmStackFrame) -> JvmResult<Option<NonZeroUsize>> {
 }
 
 #[inline]
-fn expect_reference(value: JvmValue) -> JvmResult<Option<NonZeroUsize>> {
+pub fn expect_float(value: JvmValue) -> JvmResult<f32> {
+    match value {
+        JvmValue::Float(float) => Ok(float),
+        _ => Err(JvmError::TypeError {
+            expected: JvmType::Float,
+            found: value.get_type(),
+        }
+        .bx()),
+    }
+}
+
+#[inline]
+pub fn expect_double(value: JvmValue) -> JvmResult<f64> {
+    match value {
+        JvmValue::Double(double) => Ok(double),
+        _ => Err(JvmError::TypeError {
+            expected: JvmType::Double,
+            found: value.get_type(),
+        }
+        .bx()),
+    }
+}
+
+#[inline]
+pub fn expect_reference(value: JvmValue) -> JvmResult<Option<NonZeroUsize>> {
     match value {
         JvmValue::Reference(reference) => Ok(reference),
         _ => Err(JvmError::TypeError {
@@ -313,7 +363,7 @@ fn expect_reference(value: JvmValue) -> JvmResult<Option<NonZeroUsize>> {
 }
 
 #[inline]
-fn expect_int(value: JvmValue) -> JvmResult<i32> {
+pub fn expect_int(value: JvmValue) -> JvmResult<i32> {
     match value {
         JvmValue::Int(v) => Ok(v),
         _ => Err(JvmError::TypeError {
@@ -325,7 +375,7 @@ fn expect_int(value: JvmValue) -> JvmResult<i32> {
 }
 
 #[inline]
-fn expect_long(value: JvmValue) -> JvmResult<i64> {
+pub fn expect_long(value: JvmValue) -> JvmResult<i64> {
     match value {
         JvmValue::Long(v) => Ok(v),
         _ => Err(JvmError::TypeError {

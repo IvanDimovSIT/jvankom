@@ -264,7 +264,7 @@ impl JvmValue {
             ),
             JvmValue::Long(_) => matches!(desciptor, DescriptorType::Long),
             JvmValue::Float(_) => matches!(desciptor, DescriptorType::Float),
-            JvmValue::Double(_) => matches!(desciptor, DescriptorType::Long),
+            JvmValue::Double(_) => matches!(desciptor, DescriptorType::Double),
             JvmValue::Reference(_) => matches!(desciptor, DescriptorType::Reference),
             JvmValue::Unusable => panic!("Attempting to get the type of an unusable slot"),
         }
