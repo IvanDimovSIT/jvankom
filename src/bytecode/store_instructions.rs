@@ -30,6 +30,13 @@ where
     Ok(())
 }
 
+pub fn store_long_array_instruction(context: JvmContext) -> JvmResult<()> {
+    store_generic_array_instruction(context, pop_long, |obj| match obj {
+        HeapObject::LongArray(items) => items,
+        _ => todo!("Throw ArrayStoreException"),
+    })
+}
+
 pub fn store_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
     store_generic_array_instruction(context, pop_int, |obj| match obj {
         HeapObject::IntArray(items) => items,

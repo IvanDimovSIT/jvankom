@@ -204,7 +204,7 @@ impl JVM {
                 }
                 debug_assert!(frame.program_counter < bytecode.code.len());
                 // DEBUG
-                frame.debug_print();
+                //frame.debug_print();
 
                 let instruction = bytecode.code[frame.program_counter];
                 frame.program_counter += 1;
@@ -630,6 +630,35 @@ mod tests {
     }
 
     #[test]
+    fn test_mixed_field_access() {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/MixedFieldAccessTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "MixedFieldAccessTest".to_owned(),
+                "runTest".to_owned(),
+                "()[J".to_owned(),
+                vec![],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref) {
+            HeapObject::LongArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+        let expected_values = vec![
+            100, 110, 80, 90, 70, 10, 10, 10, 20, 40, 50, 30, 60, 1234, 5678, 999, 8888,
+        ];
+        assert_eq!(expected_values, *array);
+    }
+
+    #[test]
     fn test_field_shadowing() {
         test_field_shadowing_helper("mainCall");
         test_field_shadowing_helper("testCache");
@@ -716,6 +745,57 @@ mod tests {
     fn test_string_char_at() {
         for index in 0..("Hello".len()) {
             test_string_char_at_helper(index);
+        }
+    }
+
+    #[ignore = "TypeError { expected: Reference, found: Int }"]
+    #[test]
+    fn test_string_concat() {
+        for index in 0..("_Hello_".len()) {
+            test_string_concat_helper('a' as i32, 'b' as i32, index);
+        }
+    }
+
+    fn test_string_concat_helper(char_a: i32, char_b: i32, index: usize) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "TestString".to_owned(),
+                "concat".to_owned(),
+                "(CCI)I".to_owned(),
+                vec![
+                    JvmValue::Int(char_a),
+                    JvmValue::Int(char_b),
+                    JvmValue::Int(index as i32),
+                ],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(ascii) => {
+                let char = format!("{}Hello{}", char_a as u8 as char, char_b as u8 as char)
+                    .chars()
+                    .collect::<Vec<_>>();
+                assert_eq!(char[index] as u16, ascii as u16)
+            }
+            _ => panic!("expected int"),
+        }
+        let loaded_classes: Vec<_> = jvm
+            .class_loader
+            .get_all_loaded_classes()
+            .map(|c| c.class_file.get_class_name().unwrap())
+            .collect();
+
+        assert_eq!(4, jvm.class_loader.get_loaded_count());
+        let expected_loaded_classes = [
+            "java/lang/String$CaseInsensitiveComparator",
+            OBJECT_CLASS_NAME,
+            STRING_CLASS_NAME,
+            "TestString",
+        ];
+        for expected in expected_loaded_classes {
+            assert!(loaded_classes.contains(&expected));
         }
     }
 

@@ -52,6 +52,23 @@ pub fn sipush_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
+pub fn ldc2w_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let bytecode_value = read_u16_from_bytecode(frame);
+
+    let constant_index = validate_cp_index(bytecode_value)?;
+
+    let value = match frame.class.class_file.constant_pool.get(constant_index) {
+        ConstantValue::Long(long) => JvmValue::Long(*long),
+        ConstantValue::Double(double) => JvmValue::Double(*double),
+        _ => return Err(JvmError::InvalidConstantPoolIndex.bx()),
+    };
+
+    frame.operand_stack.push(value);
+
+    Ok(())
+}
+
 pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
     let bytecode =

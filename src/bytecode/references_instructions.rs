@@ -717,24 +717,30 @@ fn get_non_static_field_descriptor(
         .descriptor_type
 }
 
-fn find_field_index(object_class: &Rc<JvmClass>, field_name: &str) -> JvmResult<usize> {
-    let obj_state = object_class.state.borrow();
+fn find_field_index(declared_class: &Rc<JvmClass>, field_name: &str) -> JvmResult<usize> {
+    let decl_state = declared_class.state.borrow();
 
-    if let Some(fields) = &obj_state.non_static_fields {
+    if let Some(fields) = &decl_state.non_static_fields {
+        for (i, field) in fields.iter().enumerate() {
+            if field.name == field_name && Rc::ptr_eq(&field.class, declared_class) {
+                return Ok(i);
+            }
+        }
+
         for (i, field) in fields.iter().enumerate() {
             if field.name == field_name {
                 return Ok(i);
             }
         }
     } else {
-        drop(obj_state);
-        let field_types = determine_non_static_field_types(object_class)?;
-        object_class.state.borrow_mut().non_static_fields = Some(field_types);
-        return find_field_index(object_class, field_name);
+        drop(decl_state);
+        let field_types = determine_non_static_field_types(declared_class)?;
+        declared_class.state.borrow_mut().non_static_fields = Some(field_types);
+        return find_field_index(declared_class, field_name);
     }
 
     Err(JvmError::FieldNotFound {
-        class_name: object_class
+        class_name: declared_class
             .class_file
             .get_class_name()
             .unwrap_or_default()

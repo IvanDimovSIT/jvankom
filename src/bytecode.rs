@@ -1,13 +1,15 @@
 use std::num::NonZeroUsize;
 
 use crate::{
-    bytecode::stack_instructions::{dup_instruction, pop_instruction},
+    bytecode::stack_instructions::{dup_instruction, dup_x1_instruction, pop_instruction},
     jvm_model::{HeapObject, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmType, JvmValue},
 };
 
 use comparisons_instructions::*;
 use constants_instructions::*;
 use control_instructions::*;
+use conversions_instructions::*;
+use extended_instructions::*;
 use load_instructions::*;
 use math_instructions::*;
 use references_instructions::*;
@@ -16,6 +18,8 @@ use store_instructions::*;
 mod comparisons_instructions;
 mod constants_instructions;
 mod control_instructions;
+mod conversions_instructions;
+mod extended_instructions;
 mod load_instructions;
 mod math_instructions;
 mod method_descriptor_parser;
@@ -36,6 +40,7 @@ pub const ICONST_5: u8 = 0x8;
 pub const BIPUSH: u8 = 0x10;
 pub const SIPUSH: u8 = 0x11;
 pub const LDC: u8 = 0x12;
+pub const LDC2_W: u8 = 0x14;
 pub const ILOAD: u8 = 0x15;
 pub const ALOAD: u8 = 0x19;
 pub const ILOAD_0: u8 = 0x1a;
@@ -59,10 +64,12 @@ pub const ASTORE_1: u8 = 0x4c;
 pub const ASTORE_2: u8 = 0x4d;
 pub const ASTORE_3: u8 = 0x4e;
 pub const IASTORE: u8 = 0x4f;
+pub const LASTORE: u8 = 0x50;
 pub const AASTORE: u8 = 0x53;
 pub const CASTORE: u8 = 0x55;
 pub const POP: u8 = 0x57;
 pub const DUP: u8 = 0x59;
+pub const DUP_X1: u8 = 0x5a;
 pub const IADD: u8 = 0x60;
 pub const ISUB: u8 = 0x64;
 pub const IMUL: u8 = 0x68;
@@ -70,6 +77,7 @@ pub const IDIV: u8 = 0x6c;
 pub const IREM: u8 = 0x70;
 pub const INEG: u8 = 0x74;
 pub const IINC: u8 = 0x84;
+pub const I2L: u8 = 0x85;
 pub const IFEQ: u8 = 0x99;
 pub const IFNE: u8 = 0x9a;
 pub const IFLT: u8 = 0x9b;
@@ -97,6 +105,8 @@ pub const NEW: u8 = 0xbb;
 pub const NEWARRAY: u8 = 0xbc;
 pub const ANEWARRAY: u8 = 0xbd;
 pub const ARRAYLENGTH: u8 = 0xbe;
+pub const IFNULL: u8 = 0xc6;
+pub const IFNONNULL: u8 = 0xc7;
 
 type BytecodeInstruction = fn(JvmContext) -> JvmResult<()>;
 
@@ -121,6 +131,7 @@ impl BytecodeTable {
             (BIPUSH, bipush_instruction),
             (SIPUSH, sipush_instruction),
             (LDC, ldc_instruction),
+            (LDC2_W, ldc2w_instruction),
             (ILOAD, integer_load_n),
             (ALOAD, reference_load_n),
             (ILOAD_0, integer_load::<0>),
@@ -150,11 +161,14 @@ impl BytecodeTable {
             (ASTORE_2, store_reference_instruction::<2>),
             (ASTORE_3, store_reference_instruction::<3>),
             (IASTORE, store_integer_array_instruction),
+            (LASTORE, store_long_array_instruction),
             (AASTORE, store_object_array_instruction),
             (CASTORE, store_character_array_instruction),
             (POP, pop_instruction),
             (DUP, dup_instruction),
+            (DUP_X1, dup_x1_instruction),
             (IINC, increment_instruction),
+            (I2L, int_to_long_instruction),
             (IFEQ, if_equals_instruction),
             (IFNE, if_not_equals_instruction),
             (IFLT, if_less_than_instruction),
@@ -182,6 +196,8 @@ impl BytecodeTable {
             (NEWARRAY, new_array_instruction),
             (ANEWARRAY, new_object_array_instruction),
             (ARRAYLENGTH, array_length_instruction),
+            (IFNULL, if_null_instruction),
+            (IFNONNULL, if_not_null_instruction),
         ];
 
         let mut i = 0;

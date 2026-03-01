@@ -36,9 +36,13 @@ fn main() {
     let mut jvm = JVM::new(class_loader, heap);
     let result = jvm.run(
         "TestString".to_owned(),
-        "main".to_owned(),
-        "(I)I".to_owned(),
-        vec![JvmValue::Int(1)],
+        "concat".to_owned(),
+        "(CCI)I".to_owned(),
+        vec![
+            JvmValue::Int('a' as i32),
+            JvmValue::Int('b' as i32),
+            JvmValue::Int(0),
+        ],
     );
 
     if let Err(err) = result {

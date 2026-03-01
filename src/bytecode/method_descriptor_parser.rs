@@ -68,7 +68,9 @@ pub fn pop_params(types: &[DescriptorType], frame: &mut JvmStackFrame) -> JvmRes
 
     for t in types {
         match *t {
-            DescriptorType::Integer => params.insert(0, JvmValue::Int(pop_int(frame)?)),
+            DescriptorType::Integer | DescriptorType::Character => {
+                params.insert(0, JvmValue::Int(pop_int(frame)?))
+            }
             DescriptorType::Long => {
                 params.insert(0, JvmValue::Unusable);
                 params.insert(0, JvmValue::Long(pop_long(frame)?));
@@ -76,7 +78,7 @@ pub fn pop_params(types: &[DescriptorType], frame: &mut JvmStackFrame) -> JvmRes
             DescriptorType::Reference => {
                 params.insert(0, JvmValue::Reference(pop_reference(frame)?));
             }
-            _ => unimplemented!(),
+            _ => unimplemented!("{:?}", t),
         };
     }
 
