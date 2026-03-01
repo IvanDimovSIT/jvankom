@@ -340,9 +340,16 @@ impl JvmStackFrame {
             .code;
         let stack = &self.operand_stack;
         let locals = &self.local_variables;
+        let method = self
+            .class
+            .class_file
+            .constant_pool
+            .get_utf8(self.class.class_file.methods[self.method_index].name_index)
+            .unwrap();
+        let class_name = self.class.class_file.get_class_name().unwrap();
 
         println!(
-            "code:\n{bytecode:?}\nprogram counter:\n{program_counter}\nstack:\n{stack:?}\nlocals:\n{locals:?}\n"
+            "method:{class_name}.{method}\ncode:\n{bytecode:?}\nprogram counter:\n{program_counter}\nstack:\n{stack:?}\nlocals:\n{locals:?}\n"
         );
     }
 }

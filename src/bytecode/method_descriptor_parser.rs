@@ -18,8 +18,16 @@ pub fn parse_descriptor(method_descriptor: &str) -> JvmResult<Vec<DescriptorType
 
     let mut types = Vec::with_capacity(4);
     let mut in_ref = false;
+    let mut in_arr = false;
     for param_desc in params_desc.chars() {
-        if in_ref {
+        if in_arr {
+            if param_desc != '[' {
+                in_arr = false;
+                if param_desc == 'L' {
+                    in_ref = true;
+                }
+            }
+        } else if in_ref {
             if param_desc == ';' {
                 in_ref = false;
             }
@@ -37,7 +45,11 @@ pub fn parse_descriptor(method_descriptor: &str) -> JvmResult<Vec<DescriptorType
                     types.push(DescriptorType::Reference);
                     debug_assert!(['[', 'L'].contains(&param_desc));
                     debug_assert_ne!(';', param_desc);
-                    in_ref = true;
+                    if param_desc == '[' {
+                        in_arr = true;
+                    } else {
+                        in_ref = true;
+                    }
                 }
             };
         }

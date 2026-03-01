@@ -14,6 +14,7 @@ use crate::{
 
 pub const STRING_CLASS_NAME: &str = "java/lang/String";
 pub const OBJECT_CLASS_NAME: &str = "java/lang/Object";
+pub const SYSTEM_CLASS_NAME: &str = "java/lang/System";
 
 pub struct JVM {
     class_loader: ClassLoader,
@@ -204,7 +205,7 @@ impl JVM {
                 }
                 debug_assert!(frame.program_counter < bytecode.code.len());
                 // DEBUG
-                //frame.debug_print();
+                frame.debug_print();
 
                 let instruction = bytecode.code[frame.program_counter];
                 frame.program_counter += 1;
@@ -748,7 +749,7 @@ mod tests {
         }
     }
 
-    #[ignore = "TypeError { expected: Reference, found: Int }"]
+    #[ignore = "NativeMethodImplementationNotFound"]
     #[test]
     fn test_string_concat() {
         for index in 0..("_Hello_".len()) {

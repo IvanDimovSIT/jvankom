@@ -37,7 +37,7 @@ pub enum ConstantValue {
         descriptor_index: NonZeroUsize,
     },
     InvokeDynamic {
-        bootstrap_method_attr_index: NonZeroUsize,
+        bootstrap_method_attr_index: Option<NonZeroUsize>,
         name_and_type_index: NonZeroUsize,
     },
     /// placeholder after long and double

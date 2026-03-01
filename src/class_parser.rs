@@ -448,7 +448,7 @@ impl<'a> ClassParser<'a> {
         &mut self,
         constant_pool_size: usize,
     ) -> Result<ConstantValue, ClassParserError> {
-        let bootstrap_method_attr_index = self.parse_index(constant_pool_size)?;
+        let bootstrap_method_attr_index = self.parse_nullable_index(constant_pool_size)?;
         let name_and_type_index = self.parse_index(constant_pool_size)?;
         Ok(ConstantValue::InvokeDynamic {
             bootstrap_method_attr_index,
