@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::jvm_model::{DescriptorType, JvmClass};
+use crate::jvm_model::JvmClass;
 
 #[derive(Debug, Clone)]
 pub struct VTableEntry {

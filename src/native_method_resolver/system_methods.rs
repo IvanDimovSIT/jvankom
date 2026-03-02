@@ -68,7 +68,7 @@ pub fn array_copy(
     Ok(())
 }
 
-fn copy_arr<T: Copy>(src: &Vec<T>, s_start: i32, dst: &mut Vec<T>, d_start: i32, length: i32) {
+fn copy_arr<T: Copy>(src: &[T], s_start: i32, dst: &mut [T], d_start: i32, length: i32) {
     let src = &src[(s_start as usize)..((s_start + length) as usize)];
     let dst = &mut dst[(d_start as usize)..((d_start + length) as usize)];
 

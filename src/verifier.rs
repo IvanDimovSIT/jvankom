@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::Display, num::NonZeroUsize};
+use std::{error::Error, f64::consts::E, fmt::Display, num::NonZeroUsize};
 
 use crate::{
     bytecode::{ALOAD, ASTORE, ILOAD, IRETURN, ISTORE, RETURN},
@@ -10,6 +10,8 @@ const RETURN_INSTRUCTIONS: [u8; 2] = [RETURN, IRETURN];
 /// instructions which load or store a local, based on the bytecode
 const LOAD_STORE_N_INSTRUCTIONS: [u8; 4] = [ILOAD, ISTORE, ALOAD, ASTORE];
 
+pub type VerifierResult<T> = Result<T, VerifierError>;
+
 #[derive(Debug, Clone)]
 pub enum VerifierError {
     MissingMethodDescriptor,
@@ -17,6 +19,8 @@ pub enum VerifierError {
     InvalidIndexingInstruction,
     InvalidNameConstantIndex,
     InvalidNameAndTypeIndex,
+    InvalidUTF8Index,
+    InvalidClassIndex,
 }
 impl Display for VerifierError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -26,6 +30,8 @@ impl Display for VerifierError {
             VerifierError::InvalidIndexingInstruction => "Invalid load instruction",
             VerifierError::InvalidNameConstantIndex => "Invalid name constant index",
             VerifierError::InvalidNameAndTypeIndex => "Invalid name and type index",
+            VerifierError::InvalidUTF8Index => "Invalid UTF8 index",
+            VerifierError::InvalidClassIndex => "Invalid class index",
         };
 
         f.write_str(desc)
@@ -41,9 +47,7 @@ impl Error for VerifierError {
     }
 }
 
-pub fn verify_class_file(
-    unverified_class_file: UnverifiedClassFile,
-) -> Result<ClassFile, VerifierError> {
+pub fn verify_class_file(unverified_class_file: UnverifiedClassFile) -> VerifierResult<ClassFile> {
     let class = unverified_class_file.mark_verified();
 
     // TODO: Fix verification!
@@ -53,7 +57,7 @@ pub fn verify_class_file(
     Ok(class)
 }
 
-fn verify_returns(class: &ClassFile) -> Result<(), VerifierError> {
+fn verify_returns(class: &ClassFile) -> VerifierResult<()> {
     for method in &class.methods {
         for atr in &method.attributes {
             let _descriptor = get_descriptor(class, method)?;
@@ -80,7 +84,7 @@ fn verify_returns(class: &ClassFile) -> Result<(), VerifierError> {
     Ok(())
 }
 
-fn verify_load_and_stores(class: &ClassFile) -> Result<(), VerifierError> {
+fn verify_load_and_stores(class: &ClassFile) -> VerifierResult<()> {
     for method in &class.methods {
         for atr in &method.attributes {
             match atr {
@@ -95,7 +99,7 @@ fn verify_load_and_stores(class: &ClassFile) -> Result<(), VerifierError> {
     Ok(())
 }
 
-fn verify_load_store_bytecode(bytecode: &Bytecode) -> Result<(), VerifierError> {
+fn verify_load_store_bytecode(bytecode: &Bytecode) -> VerifierResult<()> {
     let bytecode_len = bytecode.code.len();
     if bytecode_len < 2 {
         return Ok(());
@@ -117,10 +121,20 @@ fn verify_load_store_bytecode(bytecode: &Bytecode) -> Result<(), VerifierError> 
     Ok(())
 }
 
-fn verify_constant_pool(class: &ClassFile) -> Result<(), VerifierError> {
+fn verify_constant_pool(class: &ClassFile) -> VerifierResult<()> {
     for const_value in class.constant_pool.get_all_constants() {
         match *const_value {
             ConstantValue::MethodRef {
+                class_index,
+                name_and_type_index,
+            } => verify_method_ref_constant(class, class_index, name_and_type_index)?,
+            ConstantValue::Class { name_index } => verify_utf8_constant(class, name_index)?,
+            ConstantValue::String { utf8_index } => verify_utf8_constant(class, utf8_index)?,
+            ConstantValue::FieldRef {
+                class_index,
+                name_and_type_index,
+            } => verify_field_ref_constant(class, class_index, name_and_type_index)?,
+            ConstantValue::InterfaceMethodRef {
                 class_index,
                 name_and_type_index,
             } => verify_method_ref_constant(class, class_index, name_and_type_index)?,
@@ -131,25 +145,60 @@ fn verify_constant_pool(class: &ClassFile) -> Result<(), VerifierError> {
     Ok(())
 }
 
-fn verify_method_ref_constant(
+fn verify_field_ref_constant(
     class: &ClassFile,
     class_index: NonZeroUsize,
     name_and_type_index: NonZeroUsize,
-) -> Result<(), VerifierError> {
-    let class_name = class.constant_pool.get_class_name(class_index);
-    if class_name.is_none() {
-        return Err(VerifierError::InvalidNameConstantIndex);
-    }
-
-    let name_and_type = class.constant_pool.get_name_and_type(name_and_type_index);
-    if name_and_type.is_none() {
-        return Err(VerifierError::InvalidNameAndTypeIndex);
-    }
+) -> VerifierResult<()> {
+    verify_class_index(class, class_index)?;
+    verify_name_and_type_index(class, name_and_type_index)?;
 
     Ok(())
 }
 
-fn get_descriptor<'a>(class: &'a ClassFile, method: &'a Method) -> Result<&'a str, VerifierError> {
+fn verify_name_and_type_index(
+    class: &ClassFile,
+    name_and_type_index: NonZeroUsize,
+) -> VerifierResult<()> {
+    if class
+        .constant_pool
+        .get_name_and_type(name_and_type_index)
+        .is_some()
+    {
+        Ok(())
+    } else {
+        Err(VerifierError::InvalidNameAndTypeIndex)
+    }
+}
+
+fn verify_class_index(class: &ClassFile, class_index: NonZeroUsize) -> VerifierResult<()> {
+    if class.constant_pool.get_class_name(class_index).is_some() {
+        Ok(())
+    } else {
+        Err(VerifierError::InvalidClassIndex)
+    }
+}
+
+fn verify_utf8_constant(class: &ClassFile, index: NonZeroUsize) -> VerifierResult<()> {
+    if class.constant_pool.get_utf8(index).is_some() {
+        Ok(())
+    } else {
+        Err(VerifierError::InvalidUTF8Index)
+    }
+}
+
+fn verify_method_ref_constant(
+    class: &ClassFile,
+    class_index: NonZeroUsize,
+    name_and_type_index: NonZeroUsize,
+) -> VerifierResult<()> {
+    verify_class_index(class, class_index)?;
+    verify_name_and_type_index(class, name_and_type_index)?;
+
+    Ok(())
+}
+
+fn get_descriptor<'a>(class: &'a ClassFile, method: &'a Method) -> VerifierResult<&'a str> {
     if let Some(desc) = class.constant_pool.get_utf8(method.descriptor_index) {
         Ok(desc)
     } else {

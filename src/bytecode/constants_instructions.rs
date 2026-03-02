@@ -4,9 +4,7 @@ use crate::{
     class_file::ConstantValue,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     jvm::{CLASS_CLASS_NAME, JVM, STRING_CLASS_NAME},
-    jvm_heap::JvmHeap,
     jvm_model::JvmClass,
-    string_pool::StringPool,
 };
 
 use super::*;

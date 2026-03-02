@@ -766,6 +766,36 @@ mod tests {
         test_string_string_builder_helper(2, 'c' as i32);
     }
 
+    #[test]
+    fn test_string_substring() {
+        test_string_substring_helper(0, 0, 'H' as i32);
+        test_string_substring_helper(1, 0, 'e' as i32);
+        test_string_substring_helper(1, 1, 'l' as i32);
+        test_string_substring_helper(0, 3, 'l' as i32);
+        test_string_substring_helper(2, 0, 'l' as i32);
+        test_string_substring_helper(2, 2, 'o' as i32);
+    }
+
+    fn test_string_substring_helper(start: i32, index: i32, expected: i32) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "TestString".to_owned(),
+                "subStr".to_owned(),
+                "(II)I".to_owned(),
+                vec![JvmValue::Int(start), JvmValue::Int(index)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(ascii) => {
+                assert_eq!(expected, ascii)
+            }
+            _ => panic!("expected int"),
+        }
+    }
+
     fn test_string_string_builder_helper(index: usize, expected: i32) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
