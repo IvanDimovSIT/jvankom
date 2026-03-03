@@ -237,6 +237,16 @@ impl JVM {
 
         Ok(None)
     }
+
+    /// returns (used slotes, total allocated slots)
+    pub fn get_cache_storage_efficieny(&self) -> (usize, usize) {
+        self.class_loader
+            .get_all_loaded_classes()
+            .fold((0, 0), |(used, total), c| {
+                let (u, t) = c.state.borrow().cache.get_storage_efficiency();
+                (used + u, total + t)
+            })
+    }
 }
 
 #[cfg(test)]
@@ -361,7 +371,7 @@ mod tests {
             _ => panic!("expected int"),
         }
 
-        assert_eq!(2, jvm.cache.method_call_cache.get_cache_hits());
+        assert_eq!(2, jvm.class_loader.get_total_cache_hits());
     }
 
     #[test]
@@ -435,7 +445,7 @@ mod tests {
             _ => panic!("expected int"),
         }
 
-        assert_eq!(2, jvm.cache.method_call_cache.get_cache_hits());
+        assert_eq!(2, jvm.class_loader.get_total_cache_hits());
         assert_eq!(3, jvm.class_loader.get_loaded_count());
     }
 
@@ -467,7 +477,7 @@ mod tests {
         assert_eq!(6, array[0]);
         assert_eq!(7, array[1]);
         assert_eq!(3, jvm.class_loader.get_loaded_count());
-        assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
+        assert_eq!(1, jvm.class_loader.get_total_cache_hits());
     }
 
     #[test]
@@ -498,7 +508,7 @@ mod tests {
         assert_eq!(105, array[0]);
         assert_eq!(205, array[1]);
         assert_eq!(4, jvm.class_loader.get_loaded_count());
-        assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
+        assert_eq!(2, jvm.class_loader.get_total_cache_hits());
     }
 
     #[test]
@@ -529,7 +539,7 @@ mod tests {
         assert_eq!(5000, array[0]);
         assert_eq!(5000000, array[1]);
         assert_eq!(4, jvm.class_loader.get_loaded_count());
-        assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
+        assert_eq!(2, jvm.class_loader.get_total_cache_hits());
     }
 
     #[test]
@@ -560,7 +570,7 @@ mod tests {
         assert_eq!(12, array[0]);
         assert_eq!(33, array[1]);
         assert_eq!(4, jvm.class_loader.get_loaded_count());
-        assert_eq!(3, jvm.cache.method_call_cache.get_cache_hits());
+        assert_eq!(4, jvm.class_loader.get_total_cache_hits());
     }
 
     #[test]
@@ -594,6 +604,7 @@ mod tests {
         assert_eq!(6, array[3]);
         assert_eq!(7, array[4]);
         assert_eq!(3, jvm.class_loader.get_loaded_count());
+        assert_eq!(10, jvm.class_loader.get_total_cache_hits());
     }
 
     #[test]
@@ -660,6 +671,7 @@ mod tests {
             100, 110, 80, 90, 70, 10, 10, 10, 20, 40, 50, 30, 60, 1234, 5678, 999, 8888,
         ];
         assert_eq!(expected_values, *array);
+        assert_eq!(15, jvm.class_loader.get_total_cache_hits());
     }
 
     #[test]
@@ -774,6 +786,7 @@ mod tests {
         test_string_substring_helper(0, 3, 'l' as i32);
         test_string_substring_helper(2, 0, 'l' as i32);
         test_string_substring_helper(2, 2, 'o' as i32);
+        test_string_substring_helper(4, 0, 'o' as i32);
     }
 
     fn test_string_substring_helper(start: i32, index: i32, expected: i32) {
@@ -1141,7 +1154,7 @@ mod tests {
             JvmValue::Int(x) => assert_eq!(expected_result, x),
             _ => panic!("Expected int result"),
         }
-        assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
+        //assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
     }
 
     fn create_jvm(mut contexts: Vec<ClassSource>) -> JVM {

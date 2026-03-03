@@ -109,6 +109,13 @@ impl ClassLoader {
         Ok(class)
     }
 
+    #[cfg(debug_assertions)]
+    pub fn get_total_cache_hits(&self) -> usize {
+        self.get_all_loaded_classes()
+            .map(|c| c.state.borrow().cache.get_cache_hits())
+            .sum()
+    }
+
     fn find_class_file(&mut self, class_name: &str) -> JvmResult<Rc<JvmClass>> {
         for jar in &mut self.jars {
             if let Ok(mut file) = jar.by_name(&format!("{class_name}.class")) {

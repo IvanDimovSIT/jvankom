@@ -6,17 +6,16 @@ use crate::{
 };
 
 mod bytecode;
+mod class_cache;
 mod class_file;
 mod class_loader;
 mod class_parser;
-mod field_access_cache;
 mod field_initialisation;
 mod jvm;
 mod jvm_heap;
 mod jvm_model;
 mod method_call_cache;
 mod native_method_resolver;
-mod object_creation_cache;
 mod string_pool;
 mod v_table;
 mod verifier;
@@ -67,4 +66,15 @@ fn main() {
     let jvm_value = result.unwrap().unwrap();
 
     println!("{jvm_value:?}");
+    show_cache_storage(&jvm);
+}
+
+fn show_cache_storage(jvm: &JVM) {
+    let (used, total) = jvm.get_cache_storage_efficieny();
+    println!(
+        "Storage efficiency: {}/{}, {}%",
+        used,
+        total,
+        100.0 * used as f64 / total as f64
+    )
 }

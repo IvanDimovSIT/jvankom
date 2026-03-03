@@ -7,10 +7,10 @@ use std::{
 };
 
 use crate::{
-    class_file::ClassFile, class_loader::ClassLoader, class_parser::ClassParserError,
-    field_access_cache::FieldAccessCache, jvm_heap::JvmHeap, method_call_cache::MethodCallCache,
-    native_method_resolver::NativeMethodResolver, object_creation_cache::ObjectCreationCache,
-    string_pool::StringPool, v_table::VTable, verifier::VerifierError,
+    class_cache::ClassCache, class_file::ClassFile, class_loader::ClassLoader,
+    class_parser::ClassParserError, jvm_heap::JvmHeap, method_call_cache::MethodCallCache,
+    native_method_resolver::NativeMethodResolver, string_pool::StringPool, v_table::VTable,
+    verifier::VerifierError,
 };
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
@@ -388,6 +388,7 @@ impl JvmThread {
     }
 }
 
+/// JVM-wide runtime cached information
 #[derive(Debug)]
 pub struct JvmCache {
     pub method_call_cache: MethodCallCache,
@@ -450,10 +451,8 @@ pub struct ClassState {
     pub static_fields: Option<Vec<StaticFieldInfo>>,
     pub default_object: Option<HeapObject>,
     pub super_class: Option<Rc<JvmClass>>,
-    /// cache that maps indexes from new to classes
-    pub object_creation_cache: ObjectCreationCache,
     pub v_table: VTable,
-    pub field_access_cache: FieldAccessCache,
+    pub cache: ClassCache,
 }
 impl Default for ClassState {
     fn default() -> Self {
@@ -462,10 +461,9 @@ impl Default for ClassState {
             non_static_fields: None,
             default_object: None,
             super_class: None,
-            object_creation_cache: ObjectCreationCache::new(),
             v_table: VTable::new(),
-            field_access_cache: FieldAccessCache::new(),
             static_fields: None,
+            cache: ClassCache::new(),
         }
     }
 }

@@ -2,9 +2,9 @@ use std::rc::Rc;
 
 use crate::{
     bytecode::method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_special},
+    class_cache::{CacheEntry, FieldAccessInfo},
     class_file::{ClassFile, FieldAccessFlags, MethodAccessFlags},
     class_loader::ClassLoader,
-    field_access_cache::FieldAccessInfo,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     jvm::{JVM, OBJECT_CLASS_NAME},
     jvm_model::{DescriptorType, JvmClass, StaticFieldInfo},
@@ -120,12 +120,14 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
 ) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
+    let current_class = frame.class.clone();
 
     // check cache
-    if let Some(call_info) = context
+    if let Some(call_info) = current_class
+        .state
+        .borrow()
         .cache
-        .method_call_cache
-        .get_static_call_info(&frame.class, unvalidated_cp_index)
+        .get_static_method(unvalidated_cp_index)
     {
         let params =
             pop_params_for_static_or_special::<IS_SPECIAL>(&call_info.parameter_list, frame)?;
@@ -260,10 +262,10 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
         .class
         .state
         .borrow()
-        .object_creation_cache
-        .get(unvalidated_cp_index)
+        .cache
+        .get_object_creation(unvalidated_cp_index)
     {
-        new_object_class
+        new_object_class.clone()
     } else {
         // find and load class
         let cp_index = validate_cp_index(unvalidated_cp_index)?;
@@ -279,12 +281,10 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
         };
 
         let loaded_class = context.class_loader.get(class_name)?;
-        frame
-            .class
-            .state
-            .borrow_mut()
-            .object_creation_cache
-            .register(unvalidated_cp_index, loaded_class.clone());
+        frame.class.state.borrow_mut().cache.register(
+            unvalidated_cp_index,
+            Rc::new(CacheEntry::ObjectCreation(loaded_class.clone())),
+        );
 
         // initialise class and rewind
         if !loaded_class.state.borrow().is_initialised {
@@ -327,10 +327,11 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let current_class = frame.class.clone();
 
-    let (method_name, method_descriptor, params) = if let Some(virtual_cache) = context
-        .cache
-        .method_call_cache
-        .get_virtual_call_info(&frame.class, unvalidated_cp_index)
+    let current_class_state_ref = current_class.state.borrow();
+    let (method_name, method_descriptor, params) = if let Some(virtual_cache) =
+        current_class_state_ref
+            .cache
+            .get_virtual_method(unvalidated_cp_index)
     {
         (
             virtual_cache.method_name.as_str(),
@@ -338,6 +339,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
             pop_params_for_special(&virtual_cache.parameter_list, frame)?,
         )
     } else {
+        drop(current_class_state_ref);
         let cp_index = validate_cp_index(unvalidated_cp_index)?;
         let (class_name, method_name, method_descriptor) = if let Some(called_method) =
             current_class
@@ -528,8 +530,9 @@ where
     // cache hit:
     let current_class_state = current_class.state.borrow();
     if let Some(info) = current_class_state
-        .field_access_cache
-        .get_static(unvalidated_cp_index)
+        .cache
+        .get_static_field_access(unvalidated_cp_index)
+        .cloned()
     {
         drop(current_class_state);
         let mut state = info.target_class.state.borrow_mut();
@@ -591,11 +594,10 @@ where
         target_class: class,
         field_index: index,
     };
-    current_class
-        .state
-        .borrow_mut()
-        .field_access_cache
-        .register_static(unvalidated_cp_index, info.clone());
+    current_class.state.borrow_mut().cache.register(
+        unvalidated_cp_index,
+        Rc::new(CacheEntry::StaticFieldAccess(info)),
+    );
 
     Ok(())
 }
@@ -642,8 +644,8 @@ fn access_object_field(
     if let Some(info) = current_class
         .state
         .borrow()
-        .field_access_cache
-        .get_non_static(unvalidated_cp_index)
+        .cache
+        .get_non_static_field_access(unvalidated_cp_index)
     {
         let field_descriptor =
             get_non_static_field_descriptor(&info.target_class, info.field_index);
@@ -694,11 +696,10 @@ fn access_object_field(
         target_class: declared_class.clone(),
         field_index,
     };
-    current_class
-        .state
-        .borrow_mut()
-        .field_access_cache
-        .register_non_static(unvalidated_cp_index, field_access_info);
+    current_class.state.borrow_mut().cache.register(
+        unvalidated_cp_index,
+        Rc::new(CacheEntry::NonStaticFieldAccess(field_access_info)),
+    );
 
     Ok((field_index, field_descriptor))
 }
