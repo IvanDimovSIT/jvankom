@@ -5,6 +5,7 @@ use super::*;
 pub fn fill_in_stack_trace(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
+    _class_loader: &mut ClassLoader,
     params: Vec<JvmValue>,
 ) -> JvmResult<()> {
     let this_ref = expect_reference(params[0])?;

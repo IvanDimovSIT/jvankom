@@ -1,3 +1,5 @@
+use crate::exceptions::throw_null_pointer_exception;
+
 use super::*;
 
 #[inline]
@@ -55,7 +57,7 @@ where
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
     } else {
-        todo!("Throw NullPointerException");
+        return throw_null_pointer_exception(context);
     };
 
     let array = unwrap_array(context.heap.get(array_ref))?;

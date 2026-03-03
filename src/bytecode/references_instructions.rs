@@ -5,9 +5,10 @@ use crate::{
     class_cache::{CacheEntry, FieldAccessInfo},
     class_file::{ClassFile, FieldAccessFlags, MethodAccessFlags},
     class_loader::ClassLoader,
+    exceptions::throw_null_pointer_exception,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
-    jvm::{JVM, OBJECT_CLASS_NAME},
-    jvm_model::{DescriptorType, FrameReturn, JvmClass, StaticFieldInfo},
+    jvm::JVM,
+    jvm_model::{DescriptorType, JvmClass, OBJECT_CLASS_NAME, StaticFieldInfo},
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
     v_table::VTableEntry,
 };
@@ -28,7 +29,7 @@ pub fn array_length_instruction(context: JvmContext) -> JvmResult<()> {
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
     } else {
-        todo!("Throw NullPointerException");
+        return throw_null_pointer_exception(context);
     };
 
     let array = context.heap.get(array_ref);
@@ -129,8 +130,16 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
         .cache
         .get_static_method(unvalidated_cp_index)
     {
-        let params =
-            pop_params_for_static_or_special::<IS_SPECIAL>(&call_info.parameter_list, frame)?;
+        let params = if IS_SPECIAL {
+            if let Some(params) = pop_params_for_special(&call_info.parameter_list, frame)? {
+                params
+            } else {
+                return throw_null_pointer_exception(context);
+            }
+        } else {
+            pop_params(&call_info.parameter_list, frame)?
+        };
+
         if let Some(bytecode_index) = call_info.bytecode_index {
             let new_frame = JvmStackFrame::new(
                 call_info.class.clone(),
@@ -144,6 +153,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
             return context.native_method_resolver.execute_native_method(
                 context.current_thread,
                 context.heap,
+                context.class_loader,
                 params,
                 call_info.method_index,
                 call_info.class.clone(),
@@ -228,7 +238,15 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
     }
 
     // call resolved method
-    let params = pop_params_for_static_or_special::<IS_SPECIAL>(&param_types, frame)?;
+    let params = if IS_SPECIAL {
+        if let Some(params) = pop_params_for_special(&param_types, frame)? {
+            params
+        } else {
+            return throw_null_pointer_exception(context);
+        }
+    } else {
+        pop_params(&param_types, frame)?
+    };
 
     if let Some(bytecode_index) = called_bytecode_index {
         let new_frame =
@@ -246,6 +264,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
         return context.native_method_resolver.execute_native_method(
             context.current_thread,
             context.heap,
+            context.class_loader,
             params,
             called_method_index,
             loaded_class,
@@ -333,11 +352,15 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
             .cache
             .get_virtual_method(unvalidated_cp_index)
     {
-        (
-            virtual_cache.method_name.as_str(),
-            virtual_cache.descriptor.as_str(),
-            pop_params_for_special(&virtual_cache.parameter_list, frame)?,
-        )
+        if let Some(params) = pop_params_for_special(&virtual_cache.parameter_list, frame)? {
+            (
+                virtual_cache.method_name.as_str(),
+                virtual_cache.descriptor.as_str(),
+                params,
+            )
+        } else {
+            return throw_null_pointer_exception(context);
+        }
     } else {
         drop(current_class_state_ref);
         let cp_index = validate_cp_index(unvalidated_cp_index)?;
@@ -378,7 +401,11 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
             return Ok(());
         }
 
-        let params = pop_params_for_special(&param_types, frame)?;
+        let params = if let Some(params) = pop_params_for_special(&param_types, frame)? {
+            params
+        } else {
+            return throw_null_pointer_exception(context);
+        };
 
         (method_name, method_descriptor, params)
     };
@@ -445,6 +472,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
         return context.native_method_resolver.execute_native_method(
             context.current_thread,
             context.heap,
+            context.class_loader,
             params,
             v_table_entry.method_index,
             v_table_entry.resolved_class,
@@ -461,7 +489,7 @@ pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
-        todo!("Throw NullPointerException")
+        return throw_null_pointer_exception(context);
     };
     let (_object_class, object_fields) = match context.heap.get(object_ref) {
         HeapObject::Object { class, fields } => (class, fields),
@@ -483,7 +511,7 @@ pub fn put_field_instruction(context: JvmContext) -> JvmResult<()> {
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
-        todo!("Throw NullPointerException")
+        return throw_null_pointer_exception(context);
     };
     let (_object_class, object_fields) = match context.heap.get(object_ref) {
         HeapObject::Object { class, fields } => (class, fields),
@@ -523,7 +551,7 @@ pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
     let exception_ref = if let Some(ex_ref) = pop_reference(frame)? {
         ex_ref
     } else {
-        todo!("Throw NullPointerException");
+        return throw_null_pointer_exception(context);
     };
     let exception_obj = context.heap.get(exception_ref);
     let exception_class = match exception_obj {
@@ -532,8 +560,7 @@ pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
     };
     //TODO: check exception class
 
-    frame.return_value = Some(JvmValue::Reference(Some(exception_ref)));
-    frame.should_return = FrameReturn::Exception;
+    frame.set_exception(exception_ref);
 
     Ok(())
 }
@@ -555,7 +582,7 @@ pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
-        todo!("Throw NullPointerException");
+        return throw_null_pointer_exception(context);
     };
     let object = context.heap.get(object_ref);
     let instance_of_result = check_instance_of(class_name, object, context.class_loader)?;
@@ -942,15 +969,4 @@ fn construct_virtual_method_error(
         method_descriptor: method_descriptor.into(),
     }
     .bx()
-}
-
-fn pop_params_for_static_or_special<const IS_SPECIAL: bool>(
-    types: &[DescriptorType],
-    frame: &mut JvmStackFrame,
-) -> JvmResult<Vec<JvmValue>> {
-    if IS_SPECIAL {
-        pop_params_for_special(types, frame)
-    } else {
-        pop_params(types, frame)
-    }
 }

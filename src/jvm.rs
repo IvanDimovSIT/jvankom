@@ -14,14 +14,6 @@ use crate::{
     native_method_resolver::NativeMethodResolver,
 };
 
-pub const STRING_CLASS_NAME: &str = "java/lang/String";
-pub const CLASS_CLASS_NAME: &str = "java/lang/Class";
-pub const OBJECT_CLASS_NAME: &str = "java/lang/Object";
-pub const THROWABLE_CLASS_NAME: &str = "java/lang/Throwable";
-pub const SYSTEM_CLASS_NAME: &str = "java/lang/System";
-pub const FLOAT_CLASS_NAME: &str = "java/lang/Float";
-pub const DOUBLE_CLASS_NAME: &str = "java/lang/Double";
-
 pub struct JVM {
     class_loader: ClassLoader,
     threads: Vec<JvmThread>,
@@ -258,7 +250,12 @@ impl JVM {
 
 #[cfg(test)]
 mod tests {
-    use crate::{class_loader::ClassSource, jvm_model::HeapObject};
+    use crate::{
+        class_loader::ClassSource,
+        jvm_model::{
+            HeapObject, NULL_POINTER_EXCEPTION_NAME, OBJECT_CLASS_NAME, STRING_CLASS_NAME,
+        },
+    };
 
     use super::*;
 
@@ -1018,6 +1015,48 @@ mod tests {
     #[test]
     fn test_exceptions_throw_in_called_method_3() {
         test_exceptions_handled("throwInCalledMethod", 3, 67);
+    }
+
+    #[test]
+    fn test_null_pointer_exception_handled() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm
+            .run(
+                "NullPointerExceptionTest".to_owned(),
+                "catchNull".to_owned(),
+                "()I".to_owned(),
+                vec![],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => assert_eq!(67, int),
+            _ => panic!("expected int"),
+        }
+    }
+
+    #[test]
+    fn test_null_pointer_exception_unhandled() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm.run(
+            "NullPointerExceptionTest".to_owned(),
+            "getNullArray".to_owned(),
+            "()I".to_owned(),
+            vec![],
+        );
+
+        match result {
+            Err(err) => match *err {
+                JvmError::UnhandledException {
+                    reference: _,
+                    class_name,
+                    fields: _,
+                } => assert_eq!(NULL_POINTER_EXCEPTION_NAME, class_name),
+                _ => panic!("expected unhandled exception"),
+            },
+            _ => panic!("expected error"),
+        }
     }
 
     fn test_exceptions_unhandled(method: impl Into<String>, input: i32, expected: &str) {

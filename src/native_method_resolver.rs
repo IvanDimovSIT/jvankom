@@ -1,12 +1,12 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    jvm::{
-        CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME, OBJECT_CLASS_NAME,
-        SYSTEM_CLASS_NAME, THROWABLE_CLASS_NAME,
-    },
+    class_loader::ClassLoader,
     jvm_heap::JvmHeap,
-    jvm_model::{JvmClass, JvmError, JvmResult, JvmThread, JvmValue},
+    jvm_model::{
+        CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME, JvmClass, JvmError, JvmResult,
+        JvmThread, JvmValue, OBJECT_CLASS_NAME, SYSTEM_CLASS_NAME, THROWABLE_CLASS_NAME,
+    },
 };
 
 mod class_methods;
@@ -16,7 +16,8 @@ mod object_methods;
 mod system_methods;
 mod throwable_methods;
 
-type NativeMethodHandler = fn(&mut JvmThread, &mut JvmHeap, Vec<JvmValue>) -> JvmResult<()>;
+type NativeMethodHandler =
+    fn(&mut JvmThread, &mut JvmHeap, &mut ClassLoader, Vec<JvmValue>) -> JvmResult<()>;
 
 const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 11] = [
     (
@@ -140,13 +141,14 @@ impl NativeMethodResolver {
         &mut self,
         thread: &mut JvmThread,
         heap: &mut JvmHeap,
+        class_loader: &mut ClassLoader,
         params: Vec<JvmValue>,
         method_index: usize,
         class: Rc<JvmClass>,
     ) -> JvmResult<()> {
         let call_key = NativeMethodCallKey::new(&class, method_index);
         if let Some(index) = self.call_map.get(&call_key) {
-            return self.handlers[*index](thread, heap, params);
+            return self.handlers[*index](thread, heap, class_loader, params);
         }
 
         let method_name = class
@@ -169,7 +171,7 @@ impl NativeMethodResolver {
 
         if let Some(index) = self.name_map.get(&name_key) {
             self.call_map.insert(call_key, *index);
-            return self.handlers[*index](thread, heap, params);
+            return self.handlers[*index](thread, heap, class_loader, params);
         }
 
         Err(JvmError::NativeMethodImplementationNotFound {

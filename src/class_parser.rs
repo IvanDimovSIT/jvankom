@@ -684,7 +684,7 @@ impl<'a> ClassParser<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::jvm::OBJECT_CLASS_NAME;
+    use crate::jvm_model::OBJECT_CLASS_NAME;
 
     use super::*;
 

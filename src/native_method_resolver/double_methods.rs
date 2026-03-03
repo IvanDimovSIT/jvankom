@@ -1,5 +1,6 @@
 use crate::{
     bytecode::{expect_double, expect_long},
+    class_loader::ClassLoader,
     jvm_heap::JvmHeap,
     jvm_model::{JvmResult, JvmThread, JvmValue},
 };
@@ -7,6 +8,7 @@ use crate::{
 pub fn double_to_raw_long_bits(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
+    _class_loader: &mut ClassLoader,
     params: Vec<JvmValue>,
 ) -> JvmResult<()> {
     let double = expect_double(params[0])?;
@@ -20,6 +22,7 @@ pub fn double_to_raw_long_bits(
 pub fn long_bits_to_double(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
+    _class_loader: &mut ClassLoader,
     params: Vec<JvmValue>,
 ) -> JvmResult<()> {
     let long = expect_long(params[0])?;

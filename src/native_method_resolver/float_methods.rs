@@ -1,5 +1,6 @@
 use crate::{
     bytecode::expect_float,
+    class_loader::ClassLoader,
     jvm_heap::JvmHeap,
     jvm_model::{JvmResult, JvmThread, JvmValue},
 };
@@ -7,6 +8,7 @@ use crate::{
 pub fn float_to_raw_int_bits(
     thread: &mut JvmThread,
     _heap: &mut JvmHeap,
+    _class_loader: &mut ClassLoader,
     params: Vec<JvmValue>,
 ) -> JvmResult<()> {
     let float = expect_float(params[0])?;

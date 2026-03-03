@@ -60,18 +60,19 @@ pub fn parse_descriptor(method_descriptor: &str) -> JvmResult<Vec<DescriptorType
     Ok(types)
 }
 
+/// returns none for null this pointer
 pub fn pop_params_for_special(
     types: &[DescriptorType],
     frame: &mut JvmStackFrame,
-) -> JvmResult<Vec<JvmValue>> {
+) -> JvmResult<Option<Vec<JvmValue>>> {
     let mut params = pop_params(types, frame)?;
     let reference = pop_reference(frame)?;
     if reference.is_none() {
-        todo!("Throw NullPointerException")
+        return Ok(None);
     }
     params.insert(0, JvmValue::Reference(reference));
 
-    Ok(params)
+    Ok(Some(params))
 }
 
 /// types need to be in pop order (reversed)
