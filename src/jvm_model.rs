@@ -124,6 +124,11 @@ pub enum JvmError {
         field_name: String,
     },
     ExpectedArray,
+    UnhandledException {
+        reference: NonZeroUsize,
+        class_name: String,
+        fields: Vec<JvmValue>,
+    },
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -223,6 +228,13 @@ impl Display for JvmError {
                 format!("Static field not found: {class_name}.{field_name}")
             }
             JvmError::ExpectedArray => "Expected array object".to_owned(),
+            JvmError::UnhandledException {
+                reference,
+                class_name,
+                fields,
+            } => {
+                format!("Unhandled exception: {class_name} (adr. {reference}) fields:{fields:?}")
+            }
         };
 
         f.write_str(&description)
@@ -288,6 +300,13 @@ pub enum HeapObject {
     ObjectArray(Vec<Option<NonZeroUsize>>),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameReturn {
+    NotReturning,
+    Returning,
+    Exception,
+}
+
 #[derive(Debug, Clone)]
 pub struct JvmStackFrame {
     pub class: Rc<JvmClass>,
@@ -297,7 +316,7 @@ pub struct JvmStackFrame {
     pub operand_stack: Vec<JvmValue>,
     pub program_counter: usize,
     pub is_void: bool,
-    pub should_return: bool,
+    pub should_return: FrameReturn,
     pub return_value: Option<JvmValue>,
 }
 impl JvmStackFrame {
@@ -328,7 +347,7 @@ impl JvmStackFrame {
             bytecode_index,
             class,
             is_void,
-            should_return: false,
+            should_return: FrameReturn::NotReturning,
             return_value: None,
         }
     }
@@ -442,6 +461,16 @@ impl JvmClass {
             class_file,
             state: RefCell::new(ClassState::default()),
         })
+    }
+
+    pub fn is_sublcass_of(parent: &Rc<JvmClass>, child: &Rc<JvmClass>) -> bool {
+        if Rc::as_ptr(parent) == Rc::as_ptr(child) {
+            true
+        } else if let Some(super_class) = &child.state.borrow().super_class {
+            Self::is_sublcass_of(parent, super_class)
+        } else {
+            false
+        }
     }
 }
 

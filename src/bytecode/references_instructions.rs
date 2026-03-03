@@ -7,7 +7,7 @@ use crate::{
     class_loader::ClassLoader,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     jvm::{JVM, OBJECT_CLASS_NAME},
-    jvm_model::{DescriptorType, JvmClass, StaticFieldInfo},
+    jvm_model::{DescriptorType, FrameReturn, JvmClass, StaticFieldInfo},
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
     v_table::VTableEntry,
 };
@@ -516,6 +516,126 @@ pub fn put_static_instruction(context: JvmContext) -> JvmResult<()> {
         field.value = value;
         Ok(())
     })
+}
+
+pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let exception_ref = if let Some(ex_ref) = pop_reference(frame)? {
+        ex_ref
+    } else {
+        todo!("Throw NullPointerException");
+    };
+    let exception_obj = context.heap.get(exception_ref);
+    let exception_class = match exception_obj {
+        HeapObject::Object { class, fields: _ } => class,
+        _ => todo!("Throw exception - not an exception"),
+    };
+    //TODO: check exception class
+
+    frame.return_value = Some(JvmValue::Reference(Some(exception_ref)));
+    frame.should_return = FrameReturn::Exception;
+
+    Ok(())
+}
+
+pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.peek().unwrap();
+    let unvalidated_cp_index = read_u16_from_bytecode(frame);
+    //TODO: add cache check
+
+    let class_index = validate_cp_index(unvalidated_cp_index)?;
+
+    let current_class = frame.class.clone();
+    let class_name = current_class
+        .class_file
+        .constant_pool
+        .get_class_name(class_index)
+        .expect("Should be validated");
+
+    let object_ref = if let Some(reference) = pop_reference(frame)? {
+        reference
+    } else {
+        todo!("Throw NullPointerException");
+    };
+    let object = context.heap.get(object_ref);
+    let instance_of_result = check_instance_of(class_name, object, context.class_loader)?;
+    frame.operand_stack.push(JvmValue::Int(instance_of_result));
+
+    Ok(())
+}
+
+fn check_instance_of(
+    expected_name: &str,
+    object: &HeapObject,
+    class_loader: &mut ClassLoader,
+) -> JvmResult<i32> {
+    // TODO: implement array types - store array dimensions + class type for referece arr
+    let int = match object {
+        HeapObject::Object { class, fields: _ } => {
+            if expected_name.starts_with('[') {
+                0
+            } else {
+                let expected_class = class_loader.get(expected_name)?;
+                if JvmClass::is_sublcass_of(&expected_class, class) {
+                    1
+                } else {
+                    0
+                }
+            }
+        }
+        HeapObject::IntArray(_items) => {
+            check_array_instance_of(DescriptorType::Integer, expected_name)
+        }
+        HeapObject::ByteArray(_items) => {
+            check_array_instance_of(DescriptorType::Byte, expected_name)
+        }
+        HeapObject::BooleanArray(_items) => {
+            check_array_instance_of(DescriptorType::Boolean, expected_name)
+        }
+        HeapObject::CharacterArray(_items) => {
+            check_array_instance_of(DescriptorType::Reference, expected_name)
+        }
+        HeapObject::ShortArray(_items) => {
+            check_array_instance_of(DescriptorType::Short, expected_name)
+        }
+        HeapObject::FloatArray(_items) => {
+            check_array_instance_of(DescriptorType::Float, expected_name)
+        }
+        HeapObject::DoubleArray(_items) => {
+            check_array_instance_of(DescriptorType::Double, expected_name)
+        }
+        HeapObject::LongArray(_items) => {
+            check_array_instance_of(DescriptorType::Long, expected_name)
+        }
+        HeapObject::ObjectArray(_non_zeros) => {
+            check_array_instance_of(DescriptorType::Reference, expected_name)
+        }
+    };
+
+    Ok(int)
+}
+
+fn check_array_instance_of(array_type: DescriptorType, expected_name: &str) -> i32 {
+    if expected_name == OBJECT_CLASS_NAME {
+        return 1;
+    } else if expected_name.len() < 2 {
+        return 0;
+    }
+
+    let expected_name = &expected_name[0..2];
+    let matches = match array_type {
+        DescriptorType::Integer => expected_name == "[I",
+        DescriptorType::Long => expected_name == "[J",
+        DescriptorType::Reference => expected_name == "[[" || expected_name == "[L",
+        DescriptorType::Short => expected_name == "[S",
+        DescriptorType::Character => expected_name == "[C",
+        DescriptorType::Byte => expected_name == "[B",
+        DescriptorType::Float => expected_name == "[F",
+        DescriptorType::Double => expected_name == "[D",
+        DescriptorType::Boolean => expected_name == "[Z",
+    };
+
+    if matches { 1 } else { 0 }
 }
 
 #[inline]

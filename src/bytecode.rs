@@ -109,6 +109,8 @@ pub const NEW: u8 = 0xbb;
 pub const NEWARRAY: u8 = 0xbc;
 pub const ANEWARRAY: u8 = 0xbd;
 pub const ARRAYLENGTH: u8 = 0xbe;
+pub const ATHROW: u8 = 0xbf;
+pub const INSTANCEOF: u8 = 0xc1;
 pub const IFNULL: u8 = 0xc6;
 pub const IFNONNULL: u8 = 0xc7;
 
@@ -204,6 +206,8 @@ impl BytecodeTable {
             (NEWARRAY, new_array_instruction),
             (ANEWARRAY, new_object_array_instruction),
             (ARRAYLENGTH, array_length_instruction),
+            (ATHROW, throw_exception_instruction),
+            (INSTANCEOF, instance_of_instruction),
             (IFNULL, if_null_instruction),
             (IFNONNULL, if_not_null_instruction),
         ];

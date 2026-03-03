@@ -10,6 +10,7 @@ mod class_cache;
 mod class_file;
 mod class_loader;
 mod class_parser;
+mod exceptions;
 mod field_initialisation;
 mod jvm;
 mod jvm_heap;

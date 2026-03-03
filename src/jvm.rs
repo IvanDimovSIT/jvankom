@@ -4,10 +4,12 @@ use crate::{
     bytecode::BYTECODE_TABLE,
     class_file::MethodAccessFlags,
     class_loader::ClassLoader,
+    exceptions::handle_exception,
     field_initialisation::determine_static_fields,
     jvm_heap::JvmHeap,
     jvm_model::{
-        JvmCache, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmThread, JvmValue,
+        FrameReturn, JvmCache, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmThread,
+        JvmValue,
     },
     native_method_resolver::NativeMethodResolver,
 };
@@ -15,6 +17,7 @@ use crate::{
 pub const STRING_CLASS_NAME: &str = "java/lang/String";
 pub const CLASS_CLASS_NAME: &str = "java/lang/Class";
 pub const OBJECT_CLASS_NAME: &str = "java/lang/Object";
+pub const THROWABLE_CLASS_NAME: &str = "java/lang/Throwable";
 pub const SYSTEM_CLASS_NAME: &str = "java/lang/System";
 pub const FLOAT_CLASS_NAME: &str = "java/lang/Float";
 pub const DOUBLE_CLASS_NAME: &str = "java/lang/Double";
@@ -182,7 +185,8 @@ impl JVM {
             let instruction = {
                 let method = &frame.class.class_file.methods[frame.method_index];
                 let bytecode = method.get_bytecode(frame.bytecode_index);
-                if frame.should_return {
+                if frame.should_return == FrameReturn::NotReturning {
+                } else if frame.should_return == FrameReturn::Returning {
                     if frame.is_void {
                         current_thread.pop();
                     } else {
@@ -204,6 +208,9 @@ impl JVM {
                         }
                     };
 
+                    continue;
+                } else {
+                    handle_exception(current_thread, &mut self.heap, &mut self.class_loader)?;
                     continue;
                 }
                 debug_assert!(frame.program_counter < bytecode.code.len());
@@ -965,6 +972,98 @@ mod tests {
         test_array_length_helper(0);
     }
 
+    #[test]
+    fn test_exceptions_throw_or_catch() {
+        test_exceptions_handled("throwOrCatch", 0, 42);
+    }
+
+    #[test]
+    fn test_exceptions_throw_or_catch_unhandled() {
+        test_exceptions_unhandled(
+            "throwOrCatch",
+            1,
+            "ExceptionsTest$ExceptionsTestAnotherException",
+        );
+    }
+
+    #[test]
+    fn test_exceptions_call_and_throw() {
+        test_exceptions_handled("callAndThrow", 2, 42);
+    }
+
+    #[test]
+    fn test_exceptions_call_and_throw_unhandled() {
+        test_exceptions_unhandled(
+            "callAndThrow",
+            1,
+            "ExceptionsTest$ExceptionsTestAnotherException",
+        );
+    }
+
+    #[test]
+    fn test_exceptions_throw_in_this_method_0() {
+        test_exceptions_handled("throwInThisMethod", 0, 99);
+    }
+
+    #[test]
+    fn test_exceptions_throw_in_this_method_23() {
+        test_exceptions_handled("throwInThisMethod", 23, 69);
+    }
+
+    #[test]
+    fn test_exceptions_throw_in_called_method_2() {
+        test_exceptions_handled("throwInCalledMethod", 2, 42);
+    }
+
+    #[test]
+    fn test_exceptions_throw_in_called_method_3() {
+        test_exceptions_handled("throwInCalledMethod", 3, 67);
+    }
+
+    fn test_exceptions_unhandled(method: impl Into<String>, input: i32, expected: &str) {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/ExceptionsTest.jar".to_owned(),
+        )]);
+        let result = jvm.run(
+            "ExceptionsTest".to_owned(),
+            method.into(),
+            "(I)I".to_owned(),
+            vec![JvmValue::Int(input)],
+        );
+
+        match result {
+            Err(err) => match *err {
+                JvmError::UnhandledException {
+                    reference: _,
+                    class_name,
+                    fields: _,
+                } => assert_eq!(expected, class_name),
+                _ => panic!("expected propagated exception\n{err:?}"),
+            },
+            _ => panic!("expected propagated exception\n{result:?}"),
+        }
+    }
+
+    fn test_exceptions_handled(method: impl Into<String>, input: i32, expected: i32) {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/ExceptionsTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "ExceptionsTest".to_owned(),
+                method.into(),
+                "(I)I".to_owned(),
+                vec![JvmValue::Int(input)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => assert_eq!(expected, int),
+            _ => panic!("expected int"),
+        }
+    }
+
     fn test_array_length_helper(n: i32) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
@@ -1154,7 +1253,7 @@ mod tests {
             JvmValue::Int(x) => assert_eq!(expected_result, x),
             _ => panic!("Expected int result"),
         }
-        //assert_eq!(1, jvm.cache.method_call_cache.get_cache_hits());
+        assert_eq!(1, jvm.class_loader.get_total_cache_hits());
     }
 
     fn create_jvm(mut contexts: Vec<ClassSource>) -> JVM {

@@ -2,7 +2,8 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     jvm::{
-        CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME, OBJECT_CLASS_NAME, SYSTEM_CLASS_NAME,
+        CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME, OBJECT_CLASS_NAME,
+        SYSTEM_CLASS_NAME, THROWABLE_CLASS_NAME,
     },
     jvm_heap::JvmHeap,
     jvm_model::{JvmClass, JvmError, JvmResult, JvmThread, JvmValue},
@@ -13,10 +14,11 @@ mod double_methods;
 mod float_methods;
 mod object_methods;
 mod system_methods;
+mod throwable_methods;
 
 type NativeMethodHandler = fn(&mut JvmThread, &mut JvmHeap, Vec<JvmValue>) -> JvmResult<()>;
 
-const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 10] = [
+const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 11] = [
     (
         OBJECT_CLASS_NAME,
         "<init>",
@@ -76,6 +78,12 @@ const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 10] = [
         "longBitsToDouble",
         "(J)D",
         double_methods::long_bits_to_double,
+    ),
+    (
+        THROWABLE_CLASS_NAME,
+        "fillInStackTrace",
+        "(I)Ljava/lang/Throwable;",
+        throwable_methods::fill_in_stack_trace,
     ),
 ];
 
