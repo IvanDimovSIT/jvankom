@@ -101,6 +101,10 @@ impl JvmHeap {
                 for operand in &frame.operand_stack {
                     Self::mark_reachable_if_ref(*operand, reachable_objects, object_refs);
                 }
+
+                if let Some(return_value) = frame.return_value {
+                    Self::mark_reachable_if_ref(return_value, reachable_objects, object_refs);
+                }
             }
         }
     }
@@ -150,10 +154,10 @@ impl JvmHeap {
         reachable_objects: &mut [bool],
         object_refs: &mut Vec<NonZeroUsize>,
     ) {
-        if let JvmValue::Reference(Some(reference)) = value {
-            if !reachable_objects[reference.get()] {
-                object_refs.push(reference);
-            }
+        if let JvmValue::Reference(Some(reference)) = value
+            && !reachable_objects[reference.get()]
+        {
+            object_refs.push(reference);
             reachable_objects[reference.get()] = true;
         }
     }
