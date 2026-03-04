@@ -1,3 +1,8 @@
+use crate::exceptions::{
+    throw_array_index_out_of_bounds_exception, throw_array_store_exception,
+    throw_null_pointer_exception,
+};
+
 use super::*;
 
 #[inline]
@@ -8,7 +13,7 @@ fn store_generic_array_instruction<P, F, T>(
 ) -> JvmResult<()>
 where
     P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
-    F: FnOnce(&mut HeapObject) -> &mut Vec<T>,
+    F: FnOnce(&mut HeapObject) -> Option<&mut Vec<T>>,
 {
     let frame = context.current_thread.peek().unwrap();
 
@@ -17,13 +22,17 @@ where
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
     } else {
-        todo!("Throw NullPointerException");
+        return throw_null_pointer_exception(context);
     };
 
-    let array = get_array_fn(context.heap.get(array_ref));
+    let array = if let Some(arr) = get_array_fn(context.heap.get(array_ref)) {
+        arr
+    } else {
+        return throw_array_store_exception(context);
+    };
 
     if index < 0 || index as usize >= array.len() {
-        todo!("Throw ArrayIndexOutOfBoundsException");
+        return throw_array_index_out_of_bounds_exception(context);
     }
     array[index as usize] = value;
 
@@ -32,15 +41,15 @@ where
 
 pub fn store_long_array_instruction(context: JvmContext) -> JvmResult<()> {
     store_generic_array_instruction(context, pop_long, |obj| match obj {
-        HeapObject::LongArray(items) => items,
-        _ => todo!("Throw ArrayStoreException"),
+        HeapObject::LongArray(items) => Some(items),
+        _ => None,
     })
 }
 
 pub fn store_integer_array_instruction(context: JvmContext) -> JvmResult<()> {
     store_generic_array_instruction(context, pop_int, |obj| match obj {
-        HeapObject::IntArray(items) => items,
-        _ => todo!("Throw ArrayStoreException"),
+        HeapObject::IntArray(items) => Some(items),
+        _ => None,
     })
 }
 
@@ -49,8 +58,8 @@ pub fn store_character_array_instruction(context: JvmContext) -> JvmResult<()> {
         context,
         |frame| Ok(pop_int(frame)? as u16),
         |obj| match obj {
-            HeapObject::CharacterArray(items) => items,
-            _ => todo!("Throw ArrayStoreException"),
+            HeapObject::CharacterArray(items) => Some(items),
+            _ => None,
         },
     )
 }
@@ -58,8 +67,8 @@ pub fn store_character_array_instruction(context: JvmContext) -> JvmResult<()> {
 pub fn store_object_array_instruction(context: JvmContext) -> JvmResult<()> {
     //TODO: check for matching types
     store_generic_array_instruction(context, pop_reference, |obj| match obj {
-        HeapObject::ObjectArray(items) => items,
-        _ => todo!("Throw ArrayStoreException"),
+        HeapObject::ObjectArray(items) => Some(items),
+        _ => None,
     })
 }
 

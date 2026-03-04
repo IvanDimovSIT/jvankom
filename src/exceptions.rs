@@ -2,9 +2,18 @@ use std::{num::NonZeroUsize, rc::Rc};
 
 use crate::{
     class_loader::ClassLoader,
+    field_initialisation::{determine_non_static_field_types, initialise_object_fields},
+    jvm::JVM,
     jvm_heap::JvmHeap,
-    jvm_model::{FrameReturn, HeapObject, JvmClass, JvmError, JvmResult, JvmThread, JvmValue},
+    jvm_model::{
+        ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME, ARRAY_STORE_EXCEPTION_NAME, FrameReturn,
+        HeapObject, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmThread, JvmValue,
+        NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME, NULL_POINTER_EXCEPTION_NAME,
+    },
 };
+
+const EXCEPTION_CONSTRUCTOR_NAME: &str = "<init>";
+const EXCEPTION_CONSTRUCTOR_DESC: &str = "()V";
 
 pub fn handle_exception(
     thread: &mut JvmThread,
@@ -51,8 +60,7 @@ pub fn handle_exception(
                     .operand_stack
                     .push(JvmValue::Reference(Some(reference)));
                 frame.program_counter = handler_pc;
-                frame.return_value = None;
-                frame.should_return = FrameReturn::NotReturning;
+                frame.unset_exception();
 
                 return Ok(());
             }
@@ -80,4 +88,130 @@ pub fn handle_exception(
     } else {
         Ok(())
     }
+}
+
+pub fn throw_null_pointer_exception(context: JvmContext) -> JvmResult<()> {
+    throw_jvm_exception(
+        context.current_thread,
+        context.heap,
+        context.class_loader,
+        NULL_POINTER_EXCEPTION_NAME,
+    )
+}
+
+pub fn throw_array_index_out_of_bounds_exception(context: JvmContext) -> JvmResult<()> {
+    throw_jvm_exception(
+        context.current_thread,
+        context.heap,
+        context.class_loader,
+        ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME,
+    )
+}
+
+pub fn throw_negative_array_size_exception(context: JvmContext) -> JvmResult<()> {
+    throw_jvm_exception(
+        context.current_thread,
+        context.heap,
+        context.class_loader,
+        NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME,
+    )
+}
+
+pub fn throw_array_store_exception(context: JvmContext) -> JvmResult<()> {
+    throw_jvm_exception(
+        context.current_thread,
+        context.heap,
+        context.class_loader,
+        ARRAY_STORE_EXCEPTION_NAME,
+    )
+}
+
+pub fn throw_jvm_exception(
+    thread: &mut JvmThread,
+    heap: &mut JvmHeap,
+    class_loader: &mut ClassLoader,
+    exception_type: &str,
+) -> JvmResult<()> {
+    let frames_start = thread.len();
+    let exception_class = class_loader.get(exception_type)?;
+    if !exception_class.state.borrow().is_initialised {
+        JVM::initialise_class(thread, &exception_class, class_loader, exception_type)?;
+    }
+    if exception_class.state.borrow().non_static_fields.is_none() {
+        let fields = determine_non_static_field_types(&exception_class)?;
+        exception_class.state.borrow_mut().non_static_fields = Some(fields);
+    }
+    let exception_object = if let Some(obj) = &exception_class.state.borrow().default_object {
+        obj.clone()
+    } else {
+        let mut state = exception_class.state.borrow_mut();
+        let obj = initialise_object_fields(
+            exception_class.clone(),
+            state
+                .non_static_fields
+                .as_ref()
+                .expect("Fields not initialised"),
+        );
+        state.default_object = Some(obj.clone());
+        obj
+    };
+    let exception_ref = heap.allocate(exception_object);
+    let exception_ref_value = JvmValue::Reference(Some(exception_ref));
+    let pushed_class_init = frames_start != thread.len();
+
+    let constructor_frame = call_exception_constructor(exception_class, exception_ref_value)?;
+    if pushed_class_init {
+        thread.push_second(constructor_frame);
+    } else {
+        thread.push(constructor_frame);
+    }
+
+    let frame = if pushed_class_init {
+        debug_assert_eq!(frames_start + 2, thread.len());
+        thread.peek_third().unwrap()
+    } else {
+        debug_assert_eq!(frames_start + 1, thread.len());
+        thread.peek_second().unwrap()
+    };
+
+    frame.set_exception(exception_ref);
+
+    Ok(())
+}
+
+fn call_exception_constructor(
+    exception_class: Rc<JvmClass>,
+    exception_ref_value: JvmValue,
+) -> JvmResult<JvmStackFrame> {
+    let (method_index, bytecode_index) = if let Some(index) = exception_class
+        .class_file
+        .get_method_and_bytecode_index(EXCEPTION_CONSTRUCTOR_NAME, EXCEPTION_CONSTRUCTOR_DESC)
+    {
+        index
+    } else {
+        return Err(JvmError::MethodNotFound {
+            class_name: exception_class
+                .class_file
+                .get_class_name()
+                .expect("expected class name")
+                .to_owned(),
+            method_name: EXCEPTION_CONSTRUCTOR_NAME.to_owned(),
+        }
+        .bx());
+    };
+    if bytecode_index.is_none() {
+        return Err(JvmError::ExpectedNonNativeMethod {
+            method_name: EXCEPTION_CONSTRUCTOR_NAME.to_owned(),
+            method_descriptor: EXCEPTION_CONSTRUCTOR_DESC.to_owned(),
+        }
+        .bx());
+    }
+    let stack_frame = JvmStackFrame::new(
+        exception_class.clone(),
+        method_index,
+        bytecode_index.unwrap(),
+        vec![exception_ref_value],
+    );
+
+    Ok(stack_frame)
 }

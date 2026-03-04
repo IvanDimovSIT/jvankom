@@ -1,20 +1,24 @@
 use crate::{
     bytecode::{expect_int, expect_reference},
+    class_loader::ClassLoader,
+    exceptions::throw_jvm_exception,
     jvm_heap::JvmHeap,
-    jvm_model::{HeapObject, JvmResult, JvmThread, JvmValue},
+    jvm_model::{HeapObject, JvmResult, JvmThread, JvmValue, NULL_POINTER_EXCEPTION_NAME},
 };
 
 pub fn register_natives(
     _thread: &mut JvmThread,
     _heap: &mut JvmHeap,
+    _class_loader: &mut ClassLoader,
     _params: Vec<JvmValue>,
 ) -> JvmResult<()> {
     Ok(())
 }
 
 pub fn array_copy(
-    _thread: &mut JvmThread,
+    thread: &mut JvmThread,
     heap: &mut JvmHeap,
+    class_loader: &mut ClassLoader,
     params: Vec<JvmValue>,
 ) -> JvmResult<()> {
     let src_ref = expect_reference(params[0])?;
@@ -26,12 +30,12 @@ pub fn array_copy(
     let source = if let Some(r) = src_ref {
         heap.get(r).clone()
     } else {
-        todo!("Throw NullPointerException")
+        return throw_jvm_exception(thread, heap, class_loader, NULL_POINTER_EXCEPTION_NAME);
     };
     let destination = if let Some(r) = dst_ref {
         heap.get(r)
     } else {
-        todo!("Throw NullPointerException")
+        return throw_jvm_exception(thread, heap, class_loader, NULL_POINTER_EXCEPTION_NAME);
     };
 
     match (&source, destination) {

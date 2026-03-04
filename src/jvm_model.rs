@@ -13,6 +13,19 @@ use crate::{
     verifier::VerifierError,
 };
 
+pub const STRING_CLASS_NAME: &str = "java/lang/String";
+pub const CLASS_CLASS_NAME: &str = "java/lang/Class";
+pub const OBJECT_CLASS_NAME: &str = "java/lang/Object";
+pub const THROWABLE_CLASS_NAME: &str = "java/lang/Throwable";
+pub const SYSTEM_CLASS_NAME: &str = "java/lang/System";
+pub const FLOAT_CLASS_NAME: &str = "java/lang/Float";
+pub const DOUBLE_CLASS_NAME: &str = "java/lang/Double";
+pub const NULL_POINTER_EXCEPTION_NAME: &str = "java/lang/NullPointerException";
+pub const NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME: &str = "java/lang/NegativeArraySizeException";
+pub const ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME: &str =
+    "java/lang/ArrayIndexOutOfBoundsException";
+pub const ARRAY_STORE_EXCEPTION_NAME: &str = "java/lang/ArrayStoreException";
+
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -352,6 +365,16 @@ impl JvmStackFrame {
         }
     }
 
+    pub fn set_exception(&mut self, exception_ref: NonZeroUsize) {
+        self.return_value = Some(JvmValue::Reference(Some(exception_ref)));
+        self.should_return = FrameReturn::Exception;
+    }
+
+    pub fn unset_exception(&mut self) {
+        self.return_value = None;
+        self.should_return = FrameReturn::NotReturning;
+    }
+
     pub fn debug_print(&self) {
         let program_counter = self.program_counter;
         let bytecode = &self.class.class_file.methods[self.method_index]
@@ -394,12 +417,35 @@ impl JvmThread {
         self.stack.push(frame);
     }
 
+    pub fn push_second(&mut self, frame: JvmStackFrame) {
+        debug_assert!(self.stack.len() >= 1);
+        self.stack.insert(self.stack.len() - 1, frame);
+    }
+
     pub fn pop(&mut self) -> Option<JvmStackFrame> {
         self.stack.pop()
     }
 
     pub fn peek(&mut self) -> Option<&mut JvmStackFrame> {
         self.stack.last_mut()
+    }
+
+    pub fn peek_second(&mut self) -> Option<&mut JvmStackFrame> {
+        let stack_len = self.stack.len();
+        if stack_len < 2 {
+            None
+        } else {
+            Some(&mut self.stack[stack_len - 2])
+        }
+    }
+
+    pub fn peek_third(&mut self) -> Option<&mut JvmStackFrame> {
+        let stack_len = self.stack.len();
+        if stack_len < 3 {
+            None
+        } else {
+            Some(&mut self.stack[stack_len - 3])
+        }
     }
 
     pub fn get_stack_frames(&self) -> &[JvmStackFrame] {

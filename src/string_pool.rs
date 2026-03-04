@@ -1,7 +1,6 @@
 use crate::{
-    jvm::STRING_CLASS_NAME,
     jvm_heap::JvmHeap,
-    jvm_model::{ClassState, DescriptorType, HeapObject, JvmValue},
+    jvm_model::{ClassState, DescriptorType, HeapObject, JvmValue, STRING_CLASS_NAME},
 };
 
 /// field holding the character array

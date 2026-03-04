@@ -3,8 +3,8 @@ use std::rc::Rc;
 use crate::{
     class_file::ConstantValue,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
-    jvm::{CLASS_CLASS_NAME, JVM, STRING_CLASS_NAME},
-    jvm_model::JvmClass,
+    jvm::JVM,
+    jvm_model::{CLASS_CLASS_NAME, JvmClass, STRING_CLASS_NAME},
 };
 
 use super::*;
