@@ -5,7 +5,7 @@ use crate::{
     class_cache::{CacheEntry, FieldAccessInfo},
     class_file::{ClassFile, FieldAccessFlags, MethodAccessFlags},
     class_loader::ClassLoader,
-    exceptions::throw_null_pointer_exception,
+    exceptions::{throw_negative_array_size_exception, throw_null_pointer_exception},
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     jvm::JVM,
     jvm_model::{DescriptorType, JvmClass, OBJECT_CLASS_NAME, StaticFieldInfo},
@@ -60,7 +60,7 @@ pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
 
     let operand_value = pop_int(frame)?;
     if operand_value < 0 {
-        todo!("Throw NegativeArraySizeException");
+        return throw_negative_array_size_exception(context);
     }
     let array_size = operand_value as usize;
 
@@ -102,7 +102,7 @@ pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
 
     let operand_value = pop_int(frame)?;
     if operand_value < 0 {
-        todo!("Throw NegativeArraySizeException");
+        return throw_negative_array_size_exception(context);
     }
     let array_size = operand_value as usize;
 

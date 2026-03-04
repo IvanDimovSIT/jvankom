@@ -129,8 +129,8 @@ impl JvmHeap {
                     for reference in refs.iter().flatten() {
                         if !reachable_objects[reference.get()] {
                             object_refs.push(*reference);
+                            reachable_objects[reference.get()] = true;
                         }
-                        reachable_objects[reference.get()] = true;
                     }
                 }
                 _ => {}

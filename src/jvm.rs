@@ -253,7 +253,9 @@ mod tests {
     use crate::{
         class_loader::ClassSource,
         jvm_model::{
-            HeapObject, NULL_POINTER_EXCEPTION_NAME, OBJECT_CLASS_NAME, STRING_CLASS_NAME,
+            ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME, ARRAY_STORE_EXCEPTION_NAME, HeapObject,
+            NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME, NULL_POINTER_EXCEPTION_NAME, OBJECT_CLASS_NAME,
+            STRING_CLASS_NAME,
         },
     };
 
@@ -1056,6 +1058,76 @@ mod tests {
                 _ => panic!("expected unhandled exception"),
             },
             _ => panic!("expected error"),
+        }
+    }
+
+    #[test]
+    fn test_array_exceptions_handled_out_of_bounds_left() {
+        test_array_exceptions_handled_helper(5, -1, -1);
+    }
+
+    #[test]
+    fn test_array_exceptions_handled_out_of_bounds_right() {
+        test_array_exceptions_handled_helper(5, 5, -1);
+    }
+
+    #[test]
+    fn test_array_exceptions_handled_negative_size() {
+        test_array_exceptions_handled_helper(-5, 10, -2);
+    }
+
+    #[test]
+    fn test_array_exceptions_unhandled_out_of_bounds_left() {
+        test_array_exceptions_unhandled_helper(5, -1, ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME);
+    }
+
+    #[test]
+    fn test_array_exceptions_unhandled_out_of_bounds_right() {
+        test_array_exceptions_unhandled_helper(5, 5, ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME);
+    }
+
+    #[test]
+    fn test_array_exceptions_unhandled_negative_size() {
+        test_array_exceptions_unhandled_helper(-5, 10, NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME);
+    }
+
+    fn test_array_exceptions_unhandled_helper(size: i32, index: i32, expected: &str) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
+        let result = jvm.run(
+            "ArrayExceptionsTest".to_owned(),
+            "index".to_owned(),
+            "(II)I".to_owned(),
+            vec![JvmValue::Int(size), JvmValue::Int(index)],
+        );
+
+        match result {
+            Err(err) => match *err {
+                JvmError::UnhandledException {
+                    reference: _,
+                    class_name,
+                    fields: _,
+                } => assert_eq!(expected, class_name),
+                _ => panic!("expected UnhandledException"),
+            },
+            _ => panic!("expected error"),
+        }
+    }
+
+    fn test_array_exceptions_handled_helper(size: i32, index: i32, expected: i32) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
+        let result = jvm
+            .run(
+                "ArrayExceptionsTest".to_owned(),
+                "indexCatch".to_owned(),
+                "(II)I".to_owned(),
+                vec![JvmValue::Int(size), JvmValue::Int(index)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => assert_eq!(expected, int),
+            _ => panic!("expected int"),
         }
     }
 

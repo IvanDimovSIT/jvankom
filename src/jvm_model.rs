@@ -21,6 +21,10 @@ pub const SYSTEM_CLASS_NAME: &str = "java/lang/System";
 pub const FLOAT_CLASS_NAME: &str = "java/lang/Float";
 pub const DOUBLE_CLASS_NAME: &str = "java/lang/Double";
 pub const NULL_POINTER_EXCEPTION_NAME: &str = "java/lang/NullPointerException";
+pub const NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME: &str = "java/lang/NegativeArraySizeException";
+pub const ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME: &str =
+    "java/lang/ArrayIndexOutOfBoundsException";
+pub const ARRAY_STORE_EXCEPTION_NAME: &str = "java/lang/ArrayStoreException";
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
 

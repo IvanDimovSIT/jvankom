@@ -1,4 +1,4 @@
-use crate::exceptions::throw_null_pointer_exception;
+use crate::exceptions::{throw_array_index_out_of_bounds_exception, throw_null_pointer_exception};
 
 use super::*;
 
@@ -63,7 +63,7 @@ where
     let array = unwrap_array(context.heap.get(array_ref))?;
 
     if index < 0 || index as usize >= array.len() {
-        todo!("Throw ArrayIndexOutOfBoundsException");
+        return throw_array_index_out_of_bounds_exception(context);
     }
     let value = array[index as usize];
     frame.operand_stack.push(wrap_value(value));
