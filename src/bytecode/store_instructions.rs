@@ -1,6 +1,9 @@
-use crate::exceptions::{
-    throw_array_index_out_of_bounds_exception, throw_array_store_exception,
-    throw_null_pointer_exception,
+use crate::{
+    exceptions::{
+        throw_array_index_out_of_bounds_exception, throw_array_store_exception,
+        throw_null_pointer_exception,
+    },
+    jvm_model::{DescriptorType, JvmClass, ObjectArray, ObjectArrayType},
 };
 
 use super::*;
@@ -65,11 +68,92 @@ pub fn store_character_array_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn store_object_array_instruction(context: JvmContext) -> JvmResult<()> {
-    //TODO: check for matching types
-    store_generic_array_instruction(context, pop_reference, |obj| match obj {
-        HeapObject::ObjectArray(items) => Some(items),
-        _ => None,
-    })
+    let frame = context.current_thread.peek().unwrap();
+
+    let value = pop_reference(frame)?;
+
+    let expected_storage_type = if let Some(non_null) = value {
+        Some(get_valid_object_array_store_for_element(
+            context.heap.get(non_null),
+        ))
+    } else {
+        None
+    };
+
+    let index = pop_int(frame)?;
+    let array_ref = if let Some(array_ref) = pop_reference(frame)? {
+        array_ref
+    } else {
+        return throw_null_pointer_exception(context);
+    };
+
+    let obj_array = match context.heap.get(array_ref) {
+        HeapObject::ObjectArray(object_array) => object_array,
+        _ => return throw_array_store_exception(context),
+    };
+
+    if index < 0 || index as usize >= obj_array.array.len() {
+        return throw_array_index_out_of_bounds_exception(context);
+    }
+    let is_storage_valid = if let Some((expected_type, expected_dimension)) = expected_storage_type
+    {
+        check_object_array_type_matches_expected_element_type(
+            obj_array,
+            &expected_type,
+            expected_dimension,
+        )
+    } else {
+        true //array type always valid for null
+    };
+
+    if !is_storage_valid {
+        return throw_array_store_exception(context);
+    }
+
+    obj_array.array[index as usize] = value;
+
+    Ok(())
+}
+
+fn check_object_array_type_matches_expected_element_type(
+    obj_array: &ObjectArray,
+    expected_type: &ObjectArrayType,
+    expected_dimension: usize,
+) -> bool {
+    obj_array.dimension.get() == expected_dimension
+        && match &obj_array.object_array_type {
+            ObjectArrayType::Class(jvm_class) => match expected_type {
+                ObjectArrayType::Class(ex_jvm_class) => {
+                    JvmClass::is_sublcass_of(jvm_class, ex_jvm_class)
+                }
+                _ => false,
+            },
+            ObjectArrayType::Primitive(descriptor_type) => match expected_type {
+                ObjectArrayType::Primitive(ex_descriptor_type) => {
+                    *ex_descriptor_type == *descriptor_type
+                }
+                _ => false,
+            },
+        }
+}
+
+/// returns the expected array type with it's dimension needed to store the element
+fn get_valid_object_array_store_for_element(element: &HeapObject) -> (ObjectArrayType, usize) {
+    match element {
+        HeapObject::Object { class, fields: _ } => (ObjectArrayType::Class(class.clone()), 1),
+        HeapObject::IntArray(_) => (ObjectArrayType::Primitive(DescriptorType::Integer), 2),
+        HeapObject::ByteArray(_) => (ObjectArrayType::Primitive(DescriptorType::Byte), 2),
+        HeapObject::BooleanArray(_) => (ObjectArrayType::Primitive(DescriptorType::Boolean), 2),
+        HeapObject::CharacterArray(_) => (ObjectArrayType::Primitive(DescriptorType::Character), 2),
+        HeapObject::ShortArray(_) => (ObjectArrayType::Primitive(DescriptorType::Short), 2),
+        HeapObject::FloatArray(_) => (ObjectArrayType::Primitive(DescriptorType::Float), 2),
+        HeapObject::DoubleArray(_) => (ObjectArrayType::Primitive(DescriptorType::Double), 2),
+        HeapObject::LongArray(_) => (ObjectArrayType::Primitive(DescriptorType::Long), 2),
+        HeapObject::ObjectArray(object_array) => (
+            object_array.object_array_type.clone(),
+            object_array.dimension.get() + 1,
+        ),
+    }
 }
 
 #[inline]

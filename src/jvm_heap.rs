@@ -125,8 +125,8 @@ impl JvmHeap {
                         Self::mark_reachable_if_ref(*field, reachable_objects, object_refs);
                     }
                 }
-                HeapObject::ObjectArray(refs) => {
-                    for reference in refs.iter().flatten() {
+                HeapObject::ObjectArray(arr) => {
+                    for reference in arr.array.iter().flatten() {
                         if !reachable_objects[reference.get()] {
                             object_refs.push(*reference);
                             reachable_objects[reference.get()] = true;

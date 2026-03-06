@@ -64,7 +64,7 @@ pub fn array_copy(
             copy_arr(items_s, src_pos, items_d, dst_pos, length)
         }
         (HeapObject::ObjectArray(items_s), HeapObject::ObjectArray(items_d)) => {
-            copy_arr(items_s, src_pos, items_d, dst_pos, length)
+            copy_arr(&items_s.array, src_pos, &mut items_d.array, dst_pos, length)
         }
         _ => todo!("Throw exception"),
     }

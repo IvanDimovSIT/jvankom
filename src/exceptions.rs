@@ -15,6 +15,7 @@ use crate::{
 const EXCEPTION_CONSTRUCTOR_NAME: &str = "<init>";
 const EXCEPTION_CONSTRUCTOR_DESC: &str = "()V";
 
+/// handles exceptions - the PC must not include increments from multi-byte instructions
 pub fn handle_exception(
     thread: &mut JvmThread,
     heap: &mut JvmHeap,
@@ -39,7 +40,9 @@ pub fn handle_exception(
         let start_pc = ex_entry.start_pc as usize;
         let end_pc = ex_entry.end_pc as usize;
         let handler_pc = ex_entry.handler_pc as usize;
-        if frame.bytecode_index >= start_pc && frame.bytecode_index < end_pc {
+        // compensate for instruction pc increment (must not include multi-byte increments)
+        let pre_increment_pc = frame.program_counter - 1;
+        if pre_increment_pc >= start_pc && pre_increment_pc < end_pc {
             let handler_class = if let Some(index) = NonZeroUsize::new(catch_type) {
                 let class_name = frame
                     .class
@@ -90,6 +93,7 @@ pub fn handle_exception(
     }
 }
 
+/// pc should not include multi-byte instruction increments
 pub fn throw_null_pointer_exception(context: JvmContext) -> JvmResult<()> {
     throw_jvm_exception(
         context.current_thread,
@@ -99,6 +103,7 @@ pub fn throw_null_pointer_exception(context: JvmContext) -> JvmResult<()> {
     )
 }
 
+/// pc should not include multi-byte instruction increments
 pub fn throw_array_index_out_of_bounds_exception(context: JvmContext) -> JvmResult<()> {
     throw_jvm_exception(
         context.current_thread,
@@ -108,6 +113,7 @@ pub fn throw_array_index_out_of_bounds_exception(context: JvmContext) -> JvmResu
     )
 }
 
+/// pc should not include multi-byte instruction increments
 pub fn throw_negative_array_size_exception(context: JvmContext) -> JvmResult<()> {
     throw_jvm_exception(
         context.current_thread,
@@ -117,6 +123,7 @@ pub fn throw_negative_array_size_exception(context: JvmContext) -> JvmResult<()>
     )
 }
 
+/// pc should not include multi-byte instruction increments
 pub fn throw_array_store_exception(context: JvmContext) -> JvmResult<()> {
     throw_jvm_exception(
         context.current_thread,
@@ -126,6 +133,8 @@ pub fn throw_array_store_exception(context: JvmContext) -> JvmResult<()> {
     )
 }
 
+/// The PC must not include increments from multi-byte instructions
+/// The PC must be at the instruction that threw the exception + 1 (it is compensated by -1)
 pub fn throw_jvm_exception(
     thread: &mut JvmThread,
     heap: &mut JvmHeap,

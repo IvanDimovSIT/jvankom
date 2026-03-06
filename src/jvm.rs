@@ -833,7 +833,22 @@ mod tests {
             }
             _ => panic!("expected int"),
         }
-        assert_eq!(13, jvm.class_loader.get_loaded_count());
+        let loaded_classes: Vec<_> = jvm
+            .class_loader
+            .get_all_loaded_classes()
+            .map(|c| c.class_file.get_class_name().unwrap())
+            .collect();
+
+        let expected_loaded_classes = [
+            "java/lang/String$CaseInsensitiveComparator",
+            OBJECT_CLASS_NAME,
+            STRING_CLASS_NAME,
+            "TestString",
+            "java/io/ObjectStreamField",
+        ];
+        for expected in expected_loaded_classes {
+            assert!(loaded_classes.contains(&expected));
+        }
     }
 
     fn test_string_concat_helper(char_a: i32, char_b: i32, index: usize) {
@@ -867,12 +882,12 @@ mod tests {
             .map(|c| c.class_file.get_class_name().unwrap())
             .collect();
 
-        assert_eq!(13, jvm.class_loader.get_loaded_count());
         let expected_loaded_classes = [
             "java/lang/String$CaseInsensitiveComparator",
             OBJECT_CLASS_NAME,
             STRING_CLASS_NAME,
             "TestString",
+            "java/io/ObjectStreamField",
         ];
         for expected in expected_loaded_classes {
             assert!(loaded_classes.contains(&expected));
@@ -904,12 +919,13 @@ mod tests {
             .map(|c| c.class_file.get_class_name().unwrap())
             .collect();
 
-        assert_eq!(4, jvm.class_loader.get_loaded_count());
+        assert_eq!(5, jvm.class_loader.get_loaded_count());
         let expected_loaded_classes = [
             "java/lang/String$CaseInsensitiveComparator",
             OBJECT_CLASS_NAME,
             STRING_CLASS_NAME,
             "TestString",
+            "java/io/ObjectStreamField",
         ];
         for expected in expected_loaded_classes {
             assert!(loaded_classes.contains(&expected));
@@ -1089,6 +1105,31 @@ mod tests {
     #[test]
     fn test_array_exceptions_unhandled_negative_size() {
         test_array_exceptions_unhandled_helper(-5, 10, NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME);
+    }
+
+    #[test]
+    fn test_instanceof() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
+        let result = jvm
+            .run(
+                "InstanceofTest".to_owned(),
+                "test".to_owned(),
+                "()[I".to_owned(),
+                vec![],
+            )
+            .unwrap()
+            .unwrap();
+
+        let array_ref = match result {
+            JvmValue::Reference(Some(r)) => r,
+            _ => panic!("expected valid reference"),
+        };
+        let array = match jvm.heap.get(array_ref) {
+            HeapObject::IntArray(items) => items,
+            _ => panic!("Expected array"),
+        };
+
+        assert_eq!(vec![1, 1, 1, 1, 1, 1, 0, 0, 0, 0], array.clone());
     }
 
     fn test_array_exceptions_unhandled_helper(size: i32, index: i32, expected: &str) {

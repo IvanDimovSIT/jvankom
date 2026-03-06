@@ -97,20 +97,11 @@ pub fn determine_non_static_field_types(class: &Rc<JvmClass>) -> JvmResult<Vec<F
     Ok(field_infos)
 }
 
+/// uses the first character of the descritor to determine the type
 fn parse_field_descriptor(descriptor: &str) -> DescriptorType {
-    match descriptor
+    descriptor
         .chars()
         .next()
         .expect("Field descriptor is empty")
-    {
-        'I' => DescriptorType::Integer,
-        'J' => DescriptorType::Long,
-        'F' => DescriptorType::Float,
-        'D' => DescriptorType::Double,
-        'B' => DescriptorType::Byte,
-        'C' => DescriptorType::Character,
-        'S' => DescriptorType::Short,
-        'Z' => DescriptorType::Boolean,
-        _ => DescriptorType::Reference,
-    }
+        .into()
 }

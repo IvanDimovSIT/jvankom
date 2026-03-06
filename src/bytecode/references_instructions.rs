@@ -8,7 +8,9 @@ use crate::{
     exceptions::{throw_negative_array_size_exception, throw_null_pointer_exception},
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     jvm::JVM,
-    jvm_model::{DescriptorType, JvmClass, OBJECT_CLASS_NAME, StaticFieldInfo},
+    jvm_model::{
+        DescriptorType, JvmClass, OBJECT_CLASS_NAME, ObjectArray, ObjectArrayType, StaticFieldInfo,
+    },
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
     v_table::VTableEntry,
 };
@@ -42,7 +44,7 @@ pub fn array_length_instruction(context: JvmContext) -> JvmResult<()> {
         HeapObject::FloatArray(items) => items.len(),
         HeapObject::DoubleArray(items) => items.len(),
         HeapObject::LongArray(items) => items.len(),
-        HeapObject::ObjectArray(items) => items.len(),
+        HeapObject::ObjectArray(arr) => arr.array.len(),
         _ => return Err(JvmError::ExpectedArray.bx()),
     } as i32;
 
@@ -60,6 +62,7 @@ pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
 
     let operand_value = pop_int(frame)?;
     if operand_value < 0 {
+        frame.program_counter -= 1; // rewind
         return throw_negative_array_size_exception(context);
     }
     let array_size = operand_value as usize;
@@ -88,8 +91,7 @@ pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
     let array_type_ref = validate_cp_index(read_u16_from_bytecode(frame))?;
 
-    //TODO: use and check arr_type
-    let _arr_type = if let Some(arr_type) = frame
+    let arr_type = if let Some(arr_type) = frame
         .class
         .class_file
         .constant_pool
@@ -99,14 +101,35 @@ pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
     } else {
         return Err(JvmError::InvalidClassIndex(array_type_ref).bx());
     };
+    //TODO: cache object array
+    let (object_array_type, dimension) =
+        determine_object_array_type_and_dimension(arr_type, context.class_loader)?;
+
+    if let ObjectArrayType::Class(jvm_class) = &object_array_type
+        && !jvm_class.state.borrow().is_initialised
+    {
+        frame.program_counter -= 3;
+        return JVM::initialise_class(
+            context.current_thread,
+            jvm_class,
+            context.class_loader,
+            jvm_class.class_file.get_class_name().unwrap(),
+        );
+    }
 
     let operand_value = pop_int(frame)?;
     if operand_value < 0 {
+        frame.program_counter -= 2; // rewind
         return throw_negative_array_size_exception(context);
     }
     let array_size = operand_value as usize;
 
-    let object = HeapObject::ObjectArray(vec![None; array_size]);
+    let object_array = ObjectArray {
+        array: vec![None; array_size],
+        dimension,
+        object_array_type,
+    };
+    let object = HeapObject::ObjectArray(object_array);
 
     let array_ref = context.heap.allocate(object);
     frame
@@ -134,6 +157,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
             if let Some(params) = pop_params_for_special(&call_info.parameter_list, frame)? {
                 params
             } else {
+                frame.program_counter -= 2; // rewind
                 return throw_null_pointer_exception(context);
             }
         } else {
@@ -242,6 +266,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
         if let Some(params) = pop_params_for_special(&param_types, frame)? {
             params
         } else {
+            frame.program_counter -= 2; // rewind
             return throw_null_pointer_exception(context);
         }
     } else {
@@ -404,6 +429,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
         let params = if let Some(params) = pop_params_for_special(&param_types, frame)? {
             params
         } else {
+            frame.program_counter -= 2; // rewind
             return throw_null_pointer_exception(context);
         };
 
@@ -489,6 +515,7 @@ pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
+        frame.program_counter -= 2; // rewind
         return throw_null_pointer_exception(context);
     };
     let (_object_class, object_fields) = match context.heap.get(object_ref) {
@@ -511,6 +538,7 @@ pub fn put_field_instruction(context: JvmContext) -> JvmResult<()> {
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
+        frame.program_counter -= 2; // rewind
         return throw_null_pointer_exception(context);
     };
     let (_object_class, object_fields) = match context.heap.get(object_ref) {
@@ -579,90 +607,184 @@ pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
         .get_class_name(class_index)
         .expect("Should be validated");
 
+    // TODO: cache types
+    let (expected_class, dimension_if_array) =
+        determine_type_and_dimension_if_array(class_name, context.class_loader)?;
+    if let ObjectArrayType::Class(jvm_class) = &expected_class
+        && !jvm_class.state.borrow().is_initialised
+    {
+        frame.program_counter -= 3;
+        return JVM::initialise_class(
+            context.current_thread,
+            jvm_class,
+            context.class_loader,
+            jvm_class.class_file.get_class_name().unwrap(),
+        );
+    }
+
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
-        return throw_null_pointer_exception(context);
+        frame.operand_stack.push(JvmValue::Int(0));
+        return Ok(());
     };
     let object = context.heap.get(object_ref);
-    let instance_of_result = check_instance_of(class_name, object, context.class_loader)?;
+    let instance_of_result = check_instance_of(&expected_class, dimension_if_array, object)?;
     frame.operand_stack.push(JvmValue::Int(instance_of_result));
 
     Ok(())
 }
 
-fn check_instance_of(
-    expected_name: &str,
-    object: &HeapObject,
+fn determine_object_array_type_and_dimension(
+    arr_type: &str,
     class_loader: &mut ClassLoader,
-) -> JvmResult<i32> {
-    // TODO: implement array types - store array dimensions + class type for referece arr
-    let int = match object {
-        HeapObject::Object { class, fields: _ } => {
-            if expected_name.starts_with('[') {
-                0
-            } else {
-                let expected_class = class_loader.get(expected_name)?;
-                if JvmClass::is_sublcass_of(&expected_class, class) {
-                    1
+) -> JvmResult<(ObjectArrayType, NonZeroUsize)> {
+    //TODO: cache determine_type_and_dimension_if_array(arr_type, class_loader) result and pass to match
+    match determine_type_and_dimension_if_array(arr_type, class_loader) {
+        Ok((inner, size)) => match inner {
+            ObjectArrayType::Primitive(_) => {
+                if size == 0 {
+                    Err(JvmError::InvalidMultidimensionalPrimitiveArrayDimension.bx())
                 } else {
-                    0
+                    Ok((inner, NonZeroUsize::new(size + 1).unwrap()))
                 }
             }
+            _ => Ok((inner, NonZeroUsize::new(size + 1).unwrap())),
+        },
+        Err(err) => Err(err),
+    }
+}
+
+/// determines the type based on a class/interface reference and it's dimension if it's an array (0 if not array)
+fn determine_type_and_dimension_if_array(
+    object_type: &str,
+    class_loader: &mut ClassLoader,
+) -> JvmResult<(ObjectArrayType, usize)> {
+    if !object_type.starts_with('[') {
+        let class_type = class_loader.get(object_type)?;
+        return Ok((ObjectArrayType::Class(class_type), 0));
+    }
+
+    // for multidimensional arrays:
+    let inner_type = object_type.trim_start_matches('[');
+    let dimension = object_type.len() - inner_type.len();
+    if inner_type.starts_with('L') {
+        let inner_type_class = class_loader.get(&inner_type[1..(inner_type.len() - 1)])?;
+        Ok((ObjectArrayType::Class(inner_type_class), dimension))
+    } else {
+        let primitive_type = inner_type
+            .chars()
+            .into_iter()
+            .next()
+            .expect("Excepted primitive type")
+            .into();
+
+        Ok((ObjectArrayType::Primitive(primitive_type), dimension))
+    }
+}
+
+fn check_instance_of(
+    expected_type: &ObjectArrayType,
+    dimension_if_array: usize,
+    object: &HeapObject,
+) -> JvmResult<i32> {
+    let matches = match object {
+        HeapObject::Object { class, fields: _ } => {
+            check_non_array_instance_of(class, expected_type, dimension_if_array)
         }
-        HeapObject::IntArray(_items) => {
-            check_array_instance_of(DescriptorType::Integer, expected_name)
+        HeapObject::IntArray(_) => {
+            check_array_instance_of(DescriptorType::Integer, expected_type, dimension_if_array)
         }
-        HeapObject::ByteArray(_items) => {
-            check_array_instance_of(DescriptorType::Byte, expected_name)
+        HeapObject::ByteArray(_) => {
+            check_array_instance_of(DescriptorType::Byte, expected_type, dimension_if_array)
         }
-        HeapObject::BooleanArray(_items) => {
-            check_array_instance_of(DescriptorType::Boolean, expected_name)
+        HeapObject::BooleanArray(_) => {
+            check_array_instance_of(DescriptorType::Boolean, expected_type, dimension_if_array)
         }
-        HeapObject::CharacterArray(_items) => {
-            check_array_instance_of(DescriptorType::Reference, expected_name)
+        HeapObject::CharacterArray(_) => {
+            check_array_instance_of(DescriptorType::Character, expected_type, dimension_if_array)
         }
-        HeapObject::ShortArray(_items) => {
-            check_array_instance_of(DescriptorType::Short, expected_name)
+        HeapObject::ShortArray(_) => {
+            check_array_instance_of(DescriptorType::Short, expected_type, dimension_if_array)
         }
-        HeapObject::FloatArray(_items) => {
-            check_array_instance_of(DescriptorType::Float, expected_name)
+        HeapObject::FloatArray(_) => {
+            check_array_instance_of(DescriptorType::Float, expected_type, dimension_if_array)
         }
-        HeapObject::DoubleArray(_items) => {
-            check_array_instance_of(DescriptorType::Double, expected_name)
+        HeapObject::DoubleArray(_) => {
+            check_array_instance_of(DescriptorType::Double, expected_type, dimension_if_array)
         }
-        HeapObject::LongArray(_items) => {
-            check_array_instance_of(DescriptorType::Long, expected_name)
+        HeapObject::LongArray(_) => {
+            check_array_instance_of(DescriptorType::Long, expected_type, dimension_if_array)
         }
-        HeapObject::ObjectArray(_non_zeros) => {
-            check_array_instance_of(DescriptorType::Reference, expected_name)
+        HeapObject::ObjectArray(object_array) => {
+            check_object_array_instance_of(object_array, expected_type, dimension_if_array)
         }
     };
+
+    let int = if matches { 1 } else { 0 };
 
     Ok(int)
 }
 
-fn check_array_instance_of(array_type: DescriptorType, expected_name: &str) -> i32 {
-    if expected_name == OBJECT_CLASS_NAME {
-        return 1;
-    } else if expected_name.len() < 2 {
-        return 0;
-    }
+fn check_object_array_instance_of(
+    obj_array: &ObjectArray,
+    expected_type: &ObjectArrayType,
+    expected_dimension: usize,
+) -> bool {
+    let types_match = match expected_type {
+        ObjectArrayType::Class(ex_jvm_class) => {
+            if expected_dimension == 0 && ex_jvm_class.class_file.super_class_index.is_none() {
+                // early return
+                return true;
+            } else {
+                match &obj_array.object_array_type {
+                    ObjectArrayType::Class(jvm_class) => {
+                        JvmClass::is_sublcass_of(ex_jvm_class, jvm_class)
+                    }
+                    _ => false,
+                }
+            }
+        }
+        ObjectArrayType::Primitive(ex_descriptor_type) => match &obj_array.object_array_type {
+            ObjectArrayType::Primitive(descriptor_type) => descriptor_type == ex_descriptor_type,
+            _ => false,
+        },
+    };
+    let dimensions_match = expected_dimension == obj_array.dimension.get();
+    types_match && dimensions_match
+}
 
-    let expected_name = &expected_name[0..2];
-    let matches = match array_type {
-        DescriptorType::Integer => expected_name == "[I",
-        DescriptorType::Long => expected_name == "[J",
-        DescriptorType::Reference => expected_name == "[[" || expected_name == "[L",
-        DescriptorType::Short => expected_name == "[S",
-        DescriptorType::Character => expected_name == "[C",
-        DescriptorType::Byte => expected_name == "[B",
-        DescriptorType::Float => expected_name == "[F",
-        DescriptorType::Double => expected_name == "[D",
-        DescriptorType::Boolean => expected_name == "[Z",
+fn check_non_array_instance_of(
+    obj_class: &Rc<JvmClass>,
+    expected_type: &ObjectArrayType,
+    expected_dimension: usize,
+) -> bool {
+    match expected_type {
+        ObjectArrayType::Class(parent) => {
+            expected_dimension == 0 && JvmClass::is_sublcass_of(parent, obj_class)
+        }
+        _ => false,
+    }
+}
+
+fn check_array_instance_of(
+    array_type: DescriptorType,
+    expected_type: &ObjectArrayType,
+    expected_dimension: usize,
+) -> bool {
+    let types_match = match expected_type {
+        ObjectArrayType::Primitive(descriptor_type) => *descriptor_type == array_type,
+        ObjectArrayType::Class(jvm_class) => {
+            if jvm_class.class_file.super_class_index.is_none() && 0 == expected_dimension {
+                // early return
+                return true;
+            } else {
+                false
+            }
+        }
     };
 
-    if matches { 1 } else { 0 }
+    expected_dimension == 1 && types_match
 }
 
 #[inline]
@@ -731,7 +853,7 @@ where
         .check_flag(FieldAccessFlags::PRIVATE_FLAG)
         && Rc::as_ptr(&current_class) != Rc::as_ptr(&class)
     {
-        todo!("Throw access exception")
+        todo!("Throw access exception and rewind by 2")
     }
 
     field_fn(&mut fields[index], frame)?;
@@ -835,7 +957,7 @@ fn access_object_field(
         .check_flag(FieldAccessFlags::PRIVATE_FLAG)
         && Rc::as_ptr(&declared_class) != Rc::as_ptr(&current_class)
     {
-        todo!("Throw access error")
+        todo!("Throw access error and rewind pc by 2")
     }
     let field_descriptor = get_non_static_field_descriptor(&declared_class, field_index);
 

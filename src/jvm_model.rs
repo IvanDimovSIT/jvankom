@@ -55,6 +55,21 @@ impl DescriptorType {
         }
     }
 }
+impl From<char> for DescriptorType {
+    fn from(value: char) -> Self {
+        match value {
+            'I' => DescriptorType::Integer,
+            'J' => DescriptorType::Long,
+            'F' => DescriptorType::Float,
+            'D' => DescriptorType::Double,
+            'B' => DescriptorType::Byte,
+            'C' => DescriptorType::Character,
+            'S' => DescriptorType::Short,
+            'Z' => DescriptorType::Boolean,
+            _ => DescriptorType::Reference,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum JvmType {
@@ -142,6 +157,7 @@ pub enum JvmError {
         class_name: String,
         fields: Vec<JvmValue>,
     },
+    InvalidMultidimensionalPrimitiveArrayDimension,
 }
 impl JvmError {
     pub fn bx(self) -> Box<Self> {
@@ -248,6 +264,9 @@ impl Display for JvmError {
             } => {
                 format!("Unhandled exception: {class_name} (adr. {reference}) fields:{fields:?}")
             }
+            JvmError::InvalidMultidimensionalPrimitiveArrayDimension => {
+                "Invalid multi-dimensional primitive array dimension".to_owned()
+            }
         };
 
         f.write_str(&description)
@@ -310,7 +329,20 @@ pub enum HeapObject {
     FloatArray(Vec<f32>),
     DoubleArray(Vec<f64>),
     LongArray(Vec<i64>),
-    ObjectArray(Vec<Option<NonZeroUsize>>),
+    ObjectArray(ObjectArray),
+}
+
+#[derive(Debug, Clone)]
+pub struct ObjectArray {
+    pub array: Vec<Option<NonZeroUsize>>,
+    pub dimension: NonZeroUsize,
+    pub object_array_type: ObjectArrayType,
+}
+
+#[derive(Debug, Clone)]
+pub enum ObjectArrayType {
+    Class(Rc<JvmClass>),
+    Primitive(DescriptorType),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
