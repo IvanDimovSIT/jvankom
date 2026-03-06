@@ -450,7 +450,7 @@ impl JvmThread {
     }
 
     pub fn push_second(&mut self, frame: JvmStackFrame) {
-        debug_assert!(self.stack.len() >= 1);
+        debug_assert!(!self.stack.is_empty());
         self.stack.insert(self.stack.len() - 1, frame);
     }
 

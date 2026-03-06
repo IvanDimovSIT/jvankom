@@ -1,4 +1,4 @@
-use std::{error::Error, f64::consts::E, fmt::Display, num::NonZeroUsize};
+use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
 use crate::{
     bytecode::{ALOAD, ASTORE, ILOAD, IRETURN, ISTORE, RETURN},

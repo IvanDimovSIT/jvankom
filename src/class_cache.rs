@@ -3,7 +3,7 @@ use std::cell::Cell;
 use std::{mem, rc::Rc};
 
 use crate::{
-    jvm_model::JvmClass,
+    jvm_model::{JvmClass, ObjectArrayType},
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
 };
 
@@ -14,10 +14,17 @@ pub struct FieldAccessInfo {
 }
 
 #[derive(Debug, Clone)]
+pub struct TypeInfo {
+    pub object_or_array: ObjectArrayType,
+    /// dimension if array
+    pub dimension: usize,
+}
+
+#[derive(Debug, Clone)]
 pub enum CacheEntry {
     StaticMethodCall(StaticMethodCallInfo),
     VirtualMethodCall(VirtualMethodCallInfo),
-    ObjectCreation(Rc<JvmClass>),
+    Type(TypeInfo),
     StaticFieldAccess(FieldAccessInfo),
     NonStaticFieldAccess(FieldAccessInfo),
 }
@@ -66,10 +73,10 @@ impl ClassCache {
         }
     }
 
-    pub fn get_object_creation(&self, index: u16) -> Option<&Rc<JvmClass>> {
+    pub fn get_type(&self, index: u16) -> Option<&TypeInfo> {
         let entry = self.get_entry(index)?;
         match entry.as_ref() {
-            CacheEntry::ObjectCreation(info) => {
+            CacheEntry::Type(info) => {
                 #[cfg(debug_assertions)]
                 {
                     self.cache_hits.set(self.cache_hits.get() + 1);

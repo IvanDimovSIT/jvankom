@@ -1,4 +1,4 @@
-use crate::exceptions::{throw_array_index_out_of_bounds_exception, throw_null_pointer_exception};
+use crate::{throw_array_index_out_of_bounds_exception, throw_null_pointer_exception};
 
 use super::*;
 
@@ -8,10 +8,7 @@ where
     F: FnOnce(JvmValue) -> JvmResult<T>,
 {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode =
-        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
-    let index_value = bytecode.code[frame.program_counter] as usize;
-    frame.program_counter += 1;
+    let index_value = read_u8_from_bytecode(frame) as usize;
 
     if let Some(value) = frame.local_variables.get(index_value) {
         expect_fn(*value)?;
@@ -57,13 +54,13 @@ where
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
     } else {
-        return throw_null_pointer_exception(context);
+        throw_null_pointer_exception!(frame, context, 1);
     };
 
     let array = unwrap_array(context.heap.get(array_ref))?;
 
     if index < 0 || index as usize >= array.len() {
-        return throw_array_index_out_of_bounds_exception(context);
+        throw_array_index_out_of_bounds_exception!(frame, context, 1);
     }
     let value = array[index as usize];
     frame.operand_stack.push(wrap_value(value));

@@ -6,9 +6,7 @@ use crate::{
     jvm::JVM,
     jvm_heap::JvmHeap,
     jvm_model::{
-        ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME, ARRAY_STORE_EXCEPTION_NAME, FrameReturn,
-        HeapObject, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmThread, JvmValue,
-        NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME, NULL_POINTER_EXCEPTION_NAME,
+        FrameReturn, HeapObject, JvmClass, JvmError, JvmResult, JvmStackFrame, JvmThread, JvmValue,
     },
 };
 
@@ -91,46 +89,6 @@ pub fn handle_exception(
     } else {
         Ok(())
     }
-}
-
-/// pc should not include multi-byte instruction increments
-pub fn throw_null_pointer_exception(context: JvmContext) -> JvmResult<()> {
-    throw_jvm_exception(
-        context.current_thread,
-        context.heap,
-        context.class_loader,
-        NULL_POINTER_EXCEPTION_NAME,
-    )
-}
-
-/// pc should not include multi-byte instruction increments
-pub fn throw_array_index_out_of_bounds_exception(context: JvmContext) -> JvmResult<()> {
-    throw_jvm_exception(
-        context.current_thread,
-        context.heap,
-        context.class_loader,
-        ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME,
-    )
-}
-
-/// pc should not include multi-byte instruction increments
-pub fn throw_negative_array_size_exception(context: JvmContext) -> JvmResult<()> {
-    throw_jvm_exception(
-        context.current_thread,
-        context.heap,
-        context.class_loader,
-        NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME,
-    )
-}
-
-/// pc should not include multi-byte instruction increments
-pub fn throw_array_store_exception(context: JvmContext) -> JvmResult<()> {
-    throw_jvm_exception(
-        context.current_thread,
-        context.heap,
-        context.class_loader,
-        ARRAY_STORE_EXCEPTION_NAME,
-    )
 }
 
 /// The PC must not include increments from multi-byte instructions

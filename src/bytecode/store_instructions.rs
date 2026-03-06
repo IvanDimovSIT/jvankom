@@ -1,9 +1,7 @@
 use crate::{
-    exceptions::{
-        throw_array_index_out_of_bounds_exception, throw_array_store_exception,
-        throw_null_pointer_exception,
-    },
     jvm_model::{DescriptorType, JvmClass, ObjectArray, ObjectArrayType},
+    throw_array_index_out_of_bounds_exception, throw_array_store_exception,
+    throw_null_pointer_exception,
 };
 
 use super::*;
@@ -25,17 +23,17 @@ where
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
     } else {
-        return throw_null_pointer_exception(context);
+        throw_null_pointer_exception!(frame, context, 1);
     };
 
     let array = if let Some(arr) = get_array_fn(context.heap.get(array_ref)) {
         arr
     } else {
-        return throw_array_store_exception(context);
+        throw_array_store_exception!(frame, context, 1);
     };
 
     if index < 0 || index as usize >= array.len() {
-        return throw_array_index_out_of_bounds_exception(context);
+        throw_array_index_out_of_bounds_exception!(frame, context, 1);
     }
     array[index as usize] = value;
 
@@ -84,16 +82,16 @@ pub fn store_object_array_instruction(context: JvmContext) -> JvmResult<()> {
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
     } else {
-        return throw_null_pointer_exception(context);
+        throw_null_pointer_exception!(frame, context, 1);
     };
 
     let obj_array = match context.heap.get(array_ref) {
         HeapObject::ObjectArray(object_array) => object_array,
-        _ => return throw_array_store_exception(context),
+        _ => throw_array_store_exception!(frame, context, 1),
     };
 
     if index < 0 || index as usize >= obj_array.array.len() {
-        return throw_array_index_out_of_bounds_exception(context);
+        throw_array_index_out_of_bounds_exception!(frame, context, 1);
     }
     let is_storage_valid = if let Some((expected_type, expected_dimension)) = expected_storage_type
     {
@@ -107,7 +105,7 @@ pub fn store_object_array_instruction(context: JvmContext) -> JvmResult<()> {
     };
 
     if !is_storage_valid {
-        return throw_array_store_exception(context);
+        throw_array_store_exception!(frame, context, 1);
     }
 
     obj_array.array[index as usize] = value;
@@ -167,11 +165,7 @@ where
     W: FnOnce(T) -> JvmValue,
 {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode =
-        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
-    let index_value = bytecode.code[frame.program_counter] as usize;
-    frame.program_counter += 1;
-
+    let index_value = read_u8_from_bytecode(frame) as usize;
     let generic_value = pop_generic(frame)?;
 
     frame.local_variables[index_value] = wrap_value(generic_value);

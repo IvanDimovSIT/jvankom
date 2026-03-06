@@ -2,16 +2,8 @@ use super::*;
 
 pub fn increment_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode =
-        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
-
-    let index_value = bytecode.code[frame.program_counter] as usize;
-    frame.program_counter += 1;
-    debug_assert!(frame.program_counter < bytecode.code.len());
-
-    let const_value = bytecode.code[frame.program_counter] as i8;
-    frame.program_counter += 1;
-    debug_assert!(frame.program_counter < bytecode.code.len());
+    let index_value = read_u8_from_bytecode(frame) as usize;
+    let const_value = read_u8_from_bytecode(frame) as i8;
 
     if index_value >= frame.local_variables.len() {
         return Err(JvmError::NoLocalVariableFound.bx());

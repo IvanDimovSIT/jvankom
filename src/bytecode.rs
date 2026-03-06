@@ -254,6 +254,19 @@ fn validate_cp_index(unvalidated_cp_index: u16) -> JvmResult<NonZeroUsize> {
     }
 }
 
+/// read u8 from a bytecode value (moves PC forward by 1)
+#[inline]
+fn read_u8_from_bytecode(frame: &mut JvmStackFrame) -> u8 {
+    let bytecode =
+        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+
+    let value = bytecode.code[frame.program_counter];
+    frame.program_counter += 1;
+    debug_assert!(frame.program_counter < bytecode.code.len());
+
+    value
+}
+
 /// read u16 from 2 bytecode values (moves PC forward by 2)
 #[inline]
 fn read_u16_from_bytecode(frame: &mut JvmStackFrame) -> u16 {

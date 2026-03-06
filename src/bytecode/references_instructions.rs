@@ -2,16 +2,17 @@ use std::rc::Rc;
 
 use crate::{
     bytecode::method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_special},
-    class_cache::{CacheEntry, FieldAccessInfo},
+    class_cache::{CacheEntry, FieldAccessInfo, TypeInfo},
     class_file::{ClassFile, FieldAccessFlags, MethodAccessFlags},
     class_loader::ClassLoader,
-    exceptions::{throw_negative_array_size_exception, throw_null_pointer_exception},
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
+    initialise_class_and_rewind,
     jvm::JVM,
     jvm_model::{
         DescriptorType, JvmClass, OBJECT_CLASS_NAME, ObjectArray, ObjectArrayType, StaticFieldInfo,
     },
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
+    throw_negative_array_size_exception, throw_null_pointer_exception,
     v_table::VTableEntry,
 };
 
@@ -31,7 +32,7 @@ pub fn array_length_instruction(context: JvmContext) -> JvmResult<()> {
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
     } else {
-        return throw_null_pointer_exception(context);
+        throw_null_pointer_exception!(frame, context, 1);
     };
 
     let array = context.heap.get(array_ref);
@@ -55,15 +56,11 @@ pub fn array_length_instruction(context: JvmContext) -> JvmResult<()> {
 
 pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode =
-        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
-    let array_type_value = bytecode.code[frame.program_counter];
-    frame.program_counter += 1;
+    let array_type_value = read_u8_from_bytecode(frame);
 
     let operand_value = pop_int(frame)?;
     if operand_value < 0 {
-        frame.program_counter -= 1; // rewind
-        return throw_negative_array_size_exception(context);
+        throw_negative_array_size_exception!(frame, context, 2);
     }
     let array_size = operand_value as usize;
 
@@ -89,45 +86,57 @@ pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
 
 pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let array_type_ref = validate_cp_index(read_u16_from_bytecode(frame))?;
-
-    let arr_type = if let Some(arr_type) = frame
-        .class
-        .class_file
-        .constant_pool
-        .get_class_name(array_type_ref)
+    let unvalidated_index = read_u16_from_bytecode(frame);
+    let type_info = if let Some(info) = frame.class.state.borrow().cache.get_type(unvalidated_index)
     {
-        arr_type
+        info.clone()
     } else {
-        return Err(JvmError::InvalidClassIndex(array_type_ref).bx());
-    };
-    //TODO: cache object array
-    let (object_array_type, dimension) =
-        determine_object_array_type_and_dimension(arr_type, context.class_loader)?;
+        let array_type_ref = validate_cp_index(unvalidated_index)?;
 
-    if let ObjectArrayType::Class(jvm_class) = &object_array_type
-        && !jvm_class.state.borrow().is_initialised
-    {
-        frame.program_counter -= 3;
-        return JVM::initialise_class(
-            context.current_thread,
-            jvm_class,
-            context.class_loader,
-            jvm_class.class_file.get_class_name().unwrap(),
+        let arr_type = if let Some(arr_type) = frame
+            .class
+            .class_file
+            .constant_pool
+            .get_class_name(array_type_ref)
+        {
+            arr_type
+        } else {
+            return Err(JvmError::InvalidClassIndex(array_type_ref).bx());
+        };
+        let (object_array_type, dimension) =
+            determine_type_and_dimension_if_array(arr_type, context.class_loader)?;
+
+        let type_info = TypeInfo {
+            object_or_array: object_array_type,
+            dimension: dimension,
+        };
+
+        frame.class.state.borrow_mut().cache.register(
+            unvalidated_index,
+            Rc::new(CacheEntry::Type(type_info.clone())),
         );
-    }
+
+        if let ObjectArrayType::Class(jvm_class) = &type_info.object_or_array
+            && !jvm_class.state.borrow().is_initialised
+        {
+            initialise_class_and_rewind!(frame, context, jvm_class, 3);
+        }
+
+        type_info
+    };
+
+    let (array_type, array_dimension) = determine_object_array_type_and_dimension(type_info)?;
 
     let operand_value = pop_int(frame)?;
     if operand_value < 0 {
-        frame.program_counter -= 2; // rewind
-        return throw_negative_array_size_exception(context);
+        throw_negative_array_size_exception!(frame, context, 3);
     }
     let array_size = operand_value as usize;
 
     let object_array = ObjectArray {
         array: vec![None; array_size],
-        dimension,
-        object_array_type,
+        dimension: array_dimension,
+        object_array_type: array_type,
     };
     let object = HeapObject::ObjectArray(object_array);
 
@@ -157,8 +166,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
             if let Some(params) = pop_params_for_special(&call_info.parameter_list, frame)? {
                 params
             } else {
-                frame.program_counter -= 2; // rewind
-                return throw_null_pointer_exception(context);
+                throw_null_pointer_exception!(frame, context, 3);
             }
         } else {
             pop_params(&call_info.parameter_list, frame)?
@@ -250,15 +258,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
 
     // initialise class and rewind
     if !loaded_class.state.borrow().is_initialised {
-        frame.program_counter -= 3;
-        JVM::initialise_class(
-            context.current_thread,
-            &loaded_class,
-            context.class_loader,
-            class_name,
-        )?;
-
-        return Ok(());
+        initialise_class_and_rewind!(frame, context, &loaded_class, 3);
     }
 
     // call resolved method
@@ -266,8 +266,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
         if let Some(params) = pop_params_for_special(&param_types, frame)? {
             params
         } else {
-            frame.program_counter -= 2; // rewind
-            return throw_null_pointer_exception(context);
+            throw_null_pointer_exception!(frame, context, 3);
         }
     } else {
         pop_params(&param_types, frame)?
@@ -307,9 +306,17 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
         .state
         .borrow()
         .cache
-        .get_object_creation(unvalidated_cp_index)
+        .get_type(unvalidated_cp_index)
     {
-        new_object_class.clone()
+        match &new_object_class.object_or_array {
+            ObjectArrayType::Class(jvm_class) => jvm_class.clone(),
+            _ => {
+                return Err(JvmError::InvalidClassIndex(
+                    NonZeroUsize::new(unvalidated_cp_index as usize).unwrap(),
+                )
+                .bx());
+            }
+        }
     } else {
         // find and load class
         let cp_index = validate_cp_index(unvalidated_cp_index)?;
@@ -327,20 +334,14 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
         let loaded_class = context.class_loader.get(class_name)?;
         frame.class.state.borrow_mut().cache.register(
             unvalidated_cp_index,
-            Rc::new(CacheEntry::ObjectCreation(loaded_class.clone())),
+            Rc::new(CacheEntry::Type(TypeInfo {
+                object_or_array: ObjectArrayType::Class(loaded_class.clone()),
+                dimension: 0,
+            })),
         );
 
-        // initialise class and rewind
         if !loaded_class.state.borrow().is_initialised {
-            frame.program_counter -= 3;
-            JVM::initialise_class(
-                context.current_thread,
-                &loaded_class,
-                context.class_loader,
-                class_name,
-            )?;
-
-            return Ok(());
+            initialise_class_and_rewind!(frame, context, &loaded_class, 3);
         }
 
         loaded_class
@@ -384,7 +385,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
                 params,
             )
         } else {
-            return throw_null_pointer_exception(context);
+            throw_null_pointer_exception!(frame, context, 3);
         }
     } else {
         drop(current_class_state_ref);
@@ -413,24 +414,14 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
             &current_class,
         );
 
-        // initialise class and rewind
         if !called_class.state.borrow().is_initialised {
-            frame.program_counter -= 3;
-            JVM::initialise_class(
-                context.current_thread,
-                &called_class,
-                context.class_loader,
-                class_name,
-            )?;
-
-            return Ok(());
+            initialise_class_and_rewind!(frame, context, &called_class, 3);
         }
 
         let params = if let Some(params) = pop_params_for_special(&param_types, frame)? {
             params
         } else {
-            frame.program_counter -= 2; // rewind
-            return throw_null_pointer_exception(context);
+            throw_null_pointer_exception!(frame, context, 3);
         };
 
         (method_name, method_descriptor, params)
@@ -515,8 +506,7 @@ pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
-        frame.program_counter -= 2; // rewind
-        return throw_null_pointer_exception(context);
+        throw_null_pointer_exception!(frame, context, 3);
     };
     let (_object_class, object_fields) = match context.heap.get(object_ref) {
         HeapObject::Object { class, fields } => (class, fields),
@@ -538,8 +528,7 @@ pub fn put_field_instruction(context: JvmContext) -> JvmResult<()> {
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
-        frame.program_counter -= 2; // rewind
-        return throw_null_pointer_exception(context);
+        throw_null_pointer_exception!(frame, context, 3);
     };
     let (_object_class, object_fields) = match context.heap.get(object_ref) {
         HeapObject::Object { class, fields } => (class, fields),
@@ -579,7 +568,7 @@ pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
     let exception_ref = if let Some(ex_ref) = pop_reference(frame)? {
         ex_ref
     } else {
-        return throw_null_pointer_exception(context);
+        throw_null_pointer_exception!(frame, context, 1);
     };
     let exception_obj = context.heap.get(exception_ref);
     let exception_class = match exception_obj {
@@ -596,32 +585,45 @@ pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
 pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
-    //TODO: add cache check
-
-    let class_index = validate_cp_index(unvalidated_cp_index)?;
-
-    let current_class = frame.class.clone();
-    let class_name = current_class
-        .class_file
-        .constant_pool
-        .get_class_name(class_index)
-        .expect("Should be validated");
-
-    // TODO: cache types
-    let (expected_class, dimension_if_array) =
-        determine_type_and_dimension_if_array(class_name, context.class_loader)?;
-    if let ObjectArrayType::Class(jvm_class) = &expected_class
-        && !jvm_class.state.borrow().is_initialised
+    let type_info = if let Some(type_info) = frame
+        .class
+        .state
+        .borrow()
+        .cache
+        .get_type(unvalidated_cp_index)
     {
-        frame.program_counter -= 3;
-        return JVM::initialise_class(
-            context.current_thread,
-            jvm_class,
-            context.class_loader,
-            jvm_class.class_file.get_class_name().unwrap(),
-        );
-    }
+        type_info.clone()
+    } else {
+        let class_index = validate_cp_index(unvalidated_cp_index)?;
 
+        let current_class = frame.class.clone();
+        let class_name = current_class
+            .class_file
+            .constant_pool
+            .get_class_name(class_index)
+            .expect("Should be validated");
+
+        let (expected_class, dimension_if_array) =
+            determine_type_and_dimension_if_array(class_name, context.class_loader)?;
+
+        let type_info = TypeInfo {
+            object_or_array: expected_class,
+            dimension: dimension_if_array,
+        };
+
+        frame.class.state.borrow_mut().cache.register(
+            unvalidated_cp_index,
+            Rc::new(CacheEntry::Type(type_info.clone())),
+        );
+
+        if let ObjectArrayType::Class(jvm_class) = &type_info.object_or_array
+            && !jvm_class.state.borrow().is_initialised
+        {
+            initialise_class_and_rewind!(frame, context, jvm_class, 3);
+        }
+
+        type_info
+    };
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
@@ -629,29 +631,32 @@ pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
         return Ok(());
     };
     let object = context.heap.get(object_ref);
-    let instance_of_result = check_instance_of(&expected_class, dimension_if_array, object)?;
+    let instance_of_result =
+        check_instance_of(&type_info.object_or_array, type_info.dimension, object)?;
     frame.operand_stack.push(JvmValue::Int(instance_of_result));
 
     Ok(())
 }
 
+/// convert type reference to array type
 fn determine_object_array_type_and_dimension(
-    arr_type: &str,
-    class_loader: &mut ClassLoader,
+    type_info: TypeInfo,
 ) -> JvmResult<(ObjectArrayType, NonZeroUsize)> {
-    //TODO: cache determine_type_and_dimension_if_array(arr_type, class_loader) result and pass to match
-    match determine_type_and_dimension_if_array(arr_type, class_loader) {
-        Ok((inner, size)) => match inner {
-            ObjectArrayType::Primitive(_) => {
-                if size == 0 {
-                    Err(JvmError::InvalidMultidimensionalPrimitiveArrayDimension.bx())
-                } else {
-                    Ok((inner, NonZeroUsize::new(size + 1).unwrap()))
-                }
+    match type_info.object_or_array {
+        ObjectArrayType::Primitive(_) => {
+            if type_info.dimension == 0 {
+                Err(JvmError::InvalidMultidimensionalPrimitiveArrayDimension.bx())
+            } else {
+                Ok((
+                    type_info.object_or_array,
+                    NonZeroUsize::new(type_info.dimension + 1).unwrap(),
+                ))
             }
-            _ => Ok((inner, NonZeroUsize::new(size + 1).unwrap())),
-        },
-        Err(err) => Err(err),
+        }
+        _ => Ok((
+            type_info.object_or_array,
+            NonZeroUsize::new(type_info.dimension + 1).unwrap(),
+        )),
     }
 }
 
@@ -674,7 +679,6 @@ fn determine_type_and_dimension_if_array(
     } else {
         let primitive_type = inner_type
             .chars()
-            .into_iter()
             .next()
             .expect("Excepted primitive type")
             .into();
@@ -734,7 +738,6 @@ fn check_object_array_instance_of(
     let types_match = match expected_type {
         ObjectArrayType::Class(ex_jvm_class) => {
             if expected_dimension == 0 && ex_jvm_class.class_file.super_class_index.is_none() {
-                // early return
                 return true;
             } else {
                 match &obj_array.object_array_type {
@@ -776,7 +779,6 @@ fn check_array_instance_of(
         ObjectArrayType::Primitive(descriptor_type) => *descriptor_type == array_type,
         ObjectArrayType::Class(jvm_class) => {
             if jvm_class.class_file.super_class_index.is_none() && 0 == expected_dimension {
-                // early return
                 return true;
             } else {
                 false
@@ -827,17 +829,8 @@ where
 
     let class = context.class_loader.get(class_name)?;
 
-    // initialise class and rewind
     if !class.state.borrow().is_initialised {
-        frame.program_counter -= 3;
-        JVM::initialise_class(
-            context.current_thread,
-            &class,
-            context.class_loader,
-            class_name,
-        )?;
-
-        return Ok(());
+        initialise_class_and_rewind!(frame, context, &class, 3);
     }
 
     let (class, index) = find_static_field_class_with_index(class, field_name)?;

@@ -3,6 +3,7 @@ use std::rc::Rc;
 use crate::{
     class_file::ConstantValue,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
+    initialise_class_and_rewind,
     jvm::JVM,
     jvm_model::{CLASS_CLASS_NAME, JvmClass, STRING_CLASS_NAME},
 };
@@ -29,12 +30,9 @@ pub fn integer_const_instruction<const VALUE: i32>(context: JvmContext) -> JvmRe
 
 pub fn bipush_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode =
-        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+    let read_value = read_u8_from_bytecode(frame);
     // sign-extend the value
-    let push_value = (bytecode.code[frame.program_counter] as i8) as i32;
-    frame.program_counter += 1;
-
+    let push_value = (read_value as i8) as i32;
     frame.operand_stack.push(JvmValue::Int(push_value));
 
     Ok(())
@@ -69,12 +67,7 @@ pub fn ldc2w_instruction(context: JvmContext) -> JvmResult<()> {
 
 pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.peek().unwrap();
-    let bytecode =
-        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
-
-    let bytecode_value = bytecode.code[frame.program_counter] as u16;
-    frame.program_counter += 1;
-
+    let bytecode_value = read_u8_from_bytecode(frame) as u16;
     let constant_index = validate_cp_index(bytecode_value)?;
 
     let value = match frame.class.class_file.constant_pool.get(constant_index) {
@@ -83,16 +76,8 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
         ConstantValue::Class { name_index } => {
             let class_class = context.class_loader.get(CLASS_CLASS_NAME)?;
 
-            // initialise class and rewind
             if !class_class.state.borrow().is_initialised {
-                frame.program_counter -= 2;
-                JVM::initialise_class(
-                    context.current_thread,
-                    &class_class,
-                    context.class_loader,
-                    CLASS_CLASS_NAME,
-                )?;
-                return Ok(());
+                initialise_class_and_rewind!(frame, context, &class_class, 2);
             }
 
             let class_name = frame
@@ -112,14 +97,7 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
 
             // initialise class and rewind
             if !string_class.state.borrow().is_initialised {
-                frame.program_counter -= 2;
-                JVM::initialise_class(
-                    context.current_thread,
-                    &string_class,
-                    context.class_loader,
-                    STRING_CLASS_NAME,
-                )?;
-                return Ok(());
+                initialise_class_and_rewind!(frame, context, &string_class, 2);
             }
 
             let mut string_obj = create_string_object(&string_class)?;

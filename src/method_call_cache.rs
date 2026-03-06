@@ -1,10 +1,4 @@
-#[cfg(debug_assertions)]
-use std::cell::Cell;
-use std::{
-    collections::{HashMap, hash_map::Entry},
-    hash::Hash,
-    rc::Rc,
-};
+use std::{collections::HashMap, hash::Hash, rc::Rc};
 
 use crate::{
     class_cache::CacheEntry,
