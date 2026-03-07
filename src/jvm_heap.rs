@@ -162,3 +162,173 @@ impl JvmHeap {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        class_loader::{ClassLoader, ClassSource},
+        jvm_model::{JvmStackFrame, ObjectArray, ObjectArrayType},
+    };
+
+    use super::*;
+
+    #[test]
+    fn test_allocate() {
+        let mut heap = JvmHeap::new(2, 100);
+        let mut class_loader = get_class_loader();
+        let r1 = heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        let r2 = heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        let r3 = heap.allocate(get_mock_obj(&mut class_loader, None, None));
+
+        assert!(r1 != r2 && r1 != r3 && r2 != r3);
+        assert_eq!(4, heap.heap.len());
+        assert_eq!(3, heap.get_allocated_count());
+    }
+
+    #[test]
+    fn test_gc_frees_all_unreachable_objects() {
+        let mut heap = JvmHeap::new(2, 0);
+        let mut class_loader = get_class_loader();
+
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        assert_eq!(3, heap.get_allocated_count());
+
+        heap.perform_gc(&[], std::iter::empty());
+
+        assert_eq!(0, heap.get_allocated_count());
+    }
+
+    #[test]
+    fn test_gc_frees_all_reachable_objects() {
+        let mut heap = JvmHeap::new(2, 0);
+        let mut class_loader = get_class_loader();
+
+        let r1 = heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        let r2 = heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        let r3 = heap.allocate(get_mock_obj(&mut class_loader, Some(r1), Some(r2)));
+        assert_eq!(3, heap.get_allocated_count());
+
+        let t = mock_thread(&mut class_loader, Some(r3));
+        heap.perform_gc(&[&t], std::iter::empty());
+
+        assert_eq!(3, heap.get_allocated_count());
+    }
+
+    #[test]
+    fn test_gc_resets_should_gc_flag() {
+        let mut heap = JvmHeap::new(2, 1);
+        let mut class_loader = get_class_loader();
+
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        assert!(heap.should_gc);
+
+        heap.perform_gc(&[], std::iter::empty());
+
+        assert!(!heap.should_gc);
+    }
+
+    #[test]
+    fn test_gc_freed_slots_are_reused() {
+        let mut heap = JvmHeap::new(4, 100);
+        let mut class_loader = get_class_loader();
+
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        let heap_len_before = heap.heap.len();
+
+        heap.perform_gc(&[], std::iter::empty());
+
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        heap.allocate(get_mock_obj(&mut class_loader, None, None));
+
+        assert_eq!(heap_len_before, heap.heap.len());
+    }
+
+    #[test]
+    fn test_gc_array_elements_kept_when_array_is_reachable() {
+        let mut heap = JvmHeap::new(4, 100);
+        let mut class_loader = get_class_loader();
+
+        let r1 = heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        let r2 = heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        let arr = heap.allocate(get_mock_arr(&mut class_loader, Some(r1), Some(r2)));
+
+        let t = mock_thread(&mut class_loader, Some(arr));
+        heap.perform_gc(&[&t], std::iter::empty());
+
+        assert_eq!(3, heap.get_allocated_count());
+    }
+
+    #[test]
+    fn test_gc_self_referential_object_is_freed() {
+        let mut heap = JvmHeap::new(2, 0);
+        let mut class_loader = get_class_loader();
+
+        let r1 = heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        let r2 = heap.allocate(get_mock_obj(&mut class_loader, None, None));
+        let object = heap.get(r1);
+        match object {
+            HeapObject::Object { class: _, fields } => {
+                fields[0] = JvmValue::Reference(Some(r1));
+                fields[1] = JvmValue::Reference(Some(r2));
+            }
+            _ => panic!("Expected object"),
+        }
+
+        let r3 = heap.allocate(get_mock_arr(&mut class_loader, None, None));
+        let r4 = heap.allocate(get_mock_obj(&mut class_loader, Some(r3), None));
+
+        let thread = mock_thread(&mut class_loader, Some(r4));
+        heap.perform_gc(&[&thread], std::iter::empty());
+
+        assert_eq!(2, heap.get_allocated_count());
+    }
+
+    fn mock_thread(class_loader: &mut ClassLoader, reference: Option<NonZeroUsize>) -> JvmThread {
+        let mut t = JvmThread::new();
+        t.push(JvmStackFrame::new(
+            class_loader.get("Test").unwrap(),
+            0,
+            0,
+            vec![JvmValue::Reference(reference)],
+        ));
+
+        t
+    }
+
+    fn get_mock_obj(
+        class_loader: &mut ClassLoader,
+        reference1: Option<NonZeroUsize>,
+        reference2: Option<NonZeroUsize>,
+    ) -> HeapObject {
+        HeapObject::Object {
+            class: class_loader.get("Test").unwrap(),
+            fields: vec![
+                JvmValue::Reference(reference1),
+                JvmValue::Reference(reference2),
+            ],
+        }
+    }
+
+    fn get_mock_arr(
+        class_loader: &mut ClassLoader,
+        reference1: Option<NonZeroUsize>,
+        reference2: Option<NonZeroUsize>,
+    ) -> HeapObject {
+        let arr = ObjectArray {
+            array: vec![reference1, reference2],
+            dimension: NonZeroUsize::new(1).unwrap(),
+            object_array_type: ObjectArrayType::Class(class_loader.get("Test").unwrap()),
+        };
+        HeapObject::ObjectArray(arr)
+    }
+
+    fn get_class_loader() -> ClassLoader {
+        ClassLoader::new(vec![ClassSource::Directory("test_classes".to_owned())]).unwrap()
+    }
+}

@@ -14,7 +14,7 @@ where
     P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
     C: FnOnce(T) -> JvmValue,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let value = pop_fn(frame)?;
     let result_value = conversion_fn(value);
     frame.operand_stack.push(result_value);

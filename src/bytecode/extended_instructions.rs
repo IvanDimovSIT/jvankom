@@ -13,7 +13,7 @@ fn generic_if_reference_instruction<F>(context: JvmContext, logic_fn: F) -> JvmR
 where
     F: FnOnce(Option<NonZeroUsize>) -> bool,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let reference = pop_reference(frame)?;
     if !logic_fn(reference) {
         // skip branch location

@@ -462,6 +462,10 @@ impl JvmThread {
         self.stack.last_mut()
     }
 
+    pub fn top_frame(&mut self) -> &mut JvmStackFrame {
+        self.stack.last_mut().expect("No frames found")
+    }
+
     pub fn peek_second(&mut self) -> Option<&mut JvmStackFrame> {
         let stack_len = self.stack.len();
         if stack_len < 2 {

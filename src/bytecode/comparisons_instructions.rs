@@ -53,7 +53,7 @@ fn generic_if_instruction<F>(context: JvmContext, logic_fn: F) -> JvmResult<()>
 where
     F: FnOnce(i32) -> bool,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let int = pop_int(frame)?;
     if !logic_fn(int) {
         // skip branch location
@@ -73,7 +73,7 @@ fn generic_if_compare_instruction<F>(context: JvmContext, logic_fn: F) -> JvmRes
 where
     F: FnOnce(i32, i32) -> bool,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let value2 = pop_int(frame)?;
     let value1 = pop_int(frame)?;
     if !logic_fn(value1, value2) {

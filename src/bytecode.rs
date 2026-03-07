@@ -2,7 +2,9 @@ use std::num::NonZeroUsize;
 
 use crate::{
     bytecode::stack_instructions::{dup_instruction, dup_x1_instruction, pop_instruction},
-    jvm_model::{HeapObject, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmType, JvmValue},
+    jvm_model::{
+        HeapObject, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmType, JvmValue,
+    },
 };
 
 use comparisons_instructions::*;
@@ -251,6 +253,33 @@ fn validate_cp_index(unvalidated_cp_index: u16) -> JvmResult<NonZeroUsize> {
         Ok(index)
     } else {
         Err(JvmError::InvalidConstantPoolIndex.bx())
+    }
+}
+
+/// returns the class, method name and method descriptor based on method ref index,
+/// 'class' is the class holding the CP value
+fn read_method_ref(class: &JvmClass, method_ref: NonZeroUsize) -> JvmResult<(&str, &str, &str)> {
+    if let Some(called_method) = class
+        .class_file
+        .constant_pool
+        .get_class_methodname_descriptor(method_ref)
+    {
+        Ok(called_method)
+    } else {
+        Err(JvmError::InvalidMethodRefIndex(method_ref).bx())
+    }
+}
+
+fn read_class_type(frame: &mut JvmStackFrame, type_index: NonZeroUsize) -> JvmResult<&str> {
+    if let Some(arr_type) = frame
+        .class
+        .class_file
+        .constant_pool
+        .get_class_name(type_index)
+    {
+        Ok(arr_type)
+    } else {
+        Err(JvmError::InvalidClassIndex(type_index).bx())
     }
 }
 

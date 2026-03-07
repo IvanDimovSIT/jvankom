@@ -1,7 +1,7 @@
 use super::*;
 
 pub fn pop_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let poped_value = frame.operand_stack.pop();
     debug_assert!(poped_value.is_some());
     debug_assert!(!matches!(poped_value.unwrap(), JvmValue::Unusable));
@@ -10,7 +10,7 @@ pub fn pop_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn dup_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let peeked_value = frame.operand_stack.last().copied();
     if let Some(value) = peeked_value {
         debug_assert!(!matches!(
@@ -27,7 +27,7 @@ pub fn dup_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn dup_x1_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let peeked_value = frame.operand_stack.last().copied();
     if let Some(value) = peeked_value {
         debug_assert!(!matches!(

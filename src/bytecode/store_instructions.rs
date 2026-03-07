@@ -16,7 +16,7 @@ where
     P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
     F: FnOnce(&mut HeapObject) -> Option<&mut Vec<T>>,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
 
     let value = pop_generic(frame)?;
     let index = pop_int(frame)?;
@@ -66,7 +66,7 @@ pub fn store_character_array_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn store_object_array_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
 
     let value = pop_reference(frame)?;
 

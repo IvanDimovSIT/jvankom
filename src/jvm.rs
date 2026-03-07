@@ -253,7 +253,7 @@ mod tests {
     use crate::{
         class_loader::ClassSource,
         jvm_model::{
-            ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME, ARRAY_STORE_EXCEPTION_NAME, HeapObject,
+            ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME, HeapObject,
             NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME, NULL_POINTER_EXCEPTION_NAME, OBJECT_CLASS_NAME,
             STRING_CLASS_NAME,
         },
@@ -1162,6 +1162,51 @@ mod tests {
                 "indexCatch".to_owned(),
                 "(II)I".to_owned(),
                 vec![JvmValue::Int(size), JvmValue::Int(index)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => assert_eq!(expected, int),
+            _ => panic!("expected int"),
+        }
+    }
+
+    #[test]
+    fn test_exceptions_multiple_throw_1() {
+        test_exceptions_multiple_throw_helper(1, 1);
+    }
+
+    #[test]
+    fn test_exceptions_multiple_throw_2() {
+        test_exceptions_multiple_throw_helper(2, 2);
+    }
+
+    #[test]
+    fn test_exceptions_multiple_throw_3() {
+        test_exceptions_multiple_throw_helper(3, 30);
+    }
+
+    #[test]
+    fn test_exceptions_multiple_throw_4() {
+        test_exceptions_multiple_throw_helper(4, 40);
+    }
+
+    #[test]
+    fn test_exceptions_multiple_throw_5() {
+        test_exceptions_multiple_throw_helper(5, 5 * 55555);
+    }
+
+    fn test_exceptions_multiple_throw_helper(input: i32, expected: i32) {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/ExceptionsTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "ExceptionsTest".to_owned(),
+                "multipleThrows".to_owned(),
+                "(I)I".to_owned(),
+                vec![JvmValue::Int(input)],
             )
             .unwrap()
             .unwrap();

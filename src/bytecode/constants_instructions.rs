@@ -15,21 +15,21 @@ pub fn nop_instruction(_context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn null_const_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     frame.operand_stack.push(JvmValue::Reference(None));
 
     Ok(())
 }
 
 pub fn integer_const_instruction<const VALUE: i32>(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     frame.operand_stack.push(JvmValue::Int(VALUE));
 
     Ok(())
 }
 
 pub fn bipush_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let read_value = read_u8_from_bytecode(frame);
     // sign-extend the value
     let push_value = (read_value as i8) as i32;
@@ -39,7 +39,7 @@ pub fn bipush_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn sipush_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     // sign-extend the value
     let push_value = (read_u16_from_bytecode(frame) as i16) as i32;
 
@@ -49,7 +49,7 @@ pub fn sipush_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn ldc2w_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let bytecode_value = read_u16_from_bytecode(frame);
 
     let constant_index = validate_cp_index(bytecode_value)?;
@@ -66,7 +66,7 @@ pub fn ldc2w_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let bytecode_value = read_u8_from_bytecode(frame) as u16;
     let constant_index = validate_cp_index(bytecode_value)?;
 

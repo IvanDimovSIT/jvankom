@@ -28,7 +28,7 @@ const INT_ARR: u8 = 10;
 const LONG_ARR: u8 = 11;
 
 pub fn array_length_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
     } else {
@@ -55,7 +55,7 @@ pub fn array_length_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let array_type_value = read_u8_from_bytecode(frame);
 
     let operand_value = pop_int(frame)?;
@@ -85,7 +85,7 @@ pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let unvalidated_index = read_u16_from_bytecode(frame);
     let type_info = if let Some(info) = frame.class.state.borrow().cache.get_type(unvalidated_index)
     {
@@ -93,16 +93,7 @@ pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
     } else {
         let array_type_ref = validate_cp_index(unvalidated_index)?;
 
-        let arr_type = if let Some(arr_type) = frame
-            .class
-            .class_file
-            .constant_pool
-            .get_class_name(array_type_ref)
-        {
-            arr_type
-        } else {
-            return Err(JvmError::InvalidClassIndex(array_type_ref).bx());
-        };
+        let arr_type = read_class_type(frame, array_type_ref)?;
         let (object_array_type, dimension) =
             determine_type_and_dimension_if_array(arr_type, context.class_loader)?;
 
@@ -151,7 +142,7 @@ pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
 pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
     context: JvmContext,
 ) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let current_class = frame.class.clone();
 
@@ -199,15 +190,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
     // find and load class
     let cp_index = validate_cp_index(unvalidated_cp_index)?;
     let current_class = frame.class.clone();
-    let (class_name, method_name, method_descriptor) = if let Some(called_method) = current_class
-        .class_file
-        .constant_pool
-        .get_class_methodname_descriptor(cp_index)
-    {
-        called_method
-    } else {
-        return Err(JvmError::InvalidMethodRefIndex(cp_index).bx());
-    };
+    let (class_name, method_name, method_descriptor) = read_method_ref(&current_class, cp_index)?;
 
     let loaded_class = context.class_loader.get(class_name)?;
     let (called_method_index, called_bytecode_index) = if let Some(index) = loaded_class
@@ -256,7 +239,6 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
         &frame.class,
     );
 
-    // initialise class and rewind
     if !loaded_class.state.borrow().is_initialised {
         initialise_class_and_rewind!(frame, context, &loaded_class, 3);
     }
@@ -299,7 +281,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
 }
 
 pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let new_object_class = if let Some(new_object_class) = frame
         .class
@@ -320,16 +302,7 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
     } else {
         // find and load class
         let cp_index = validate_cp_index(unvalidated_cp_index)?;
-        let current_class = frame.class.clone();
-        let class_name = if let Some(name) = current_class
-            .class_file
-            .constant_pool
-            .get_class_name(cp_index)
-        {
-            name
-        } else {
-            return Err(JvmError::InvalidClassIndex(cp_index).bx());
-        };
+        let class_name = read_class_type(frame, cp_index)?;
 
         let loaded_class = context.class_loader.get(class_name)?;
         frame.class.state.borrow_mut().cache.register(
@@ -368,7 +341,7 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let current_class = frame.class.clone();
 
@@ -390,16 +363,8 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
     } else {
         drop(current_class_state_ref);
         let cp_index = validate_cp_index(unvalidated_cp_index)?;
-        let (class_name, method_name, method_descriptor) = if let Some(called_method) =
-            current_class
-                .class_file
-                .constant_pool
-                .get_class_methodname_descriptor(cp_index)
-        {
-            called_method
-        } else {
-            return Err(JvmError::InvalidMethodRefIndex(cp_index).bx());
-        };
+        let (class_name, method_name, method_descriptor) =
+            read_method_ref(&current_class, cp_index)?;
 
         let called_class = context.class_loader.get(class_name)?;
         let param_types = parse_descriptor(method_descriptor)?;
@@ -500,7 +465,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let (field_index, _) = access_object_field(unvalidated_cp_index, frame, context.class_loader)?;
     let object_ref = if let Some(reference) = pop_reference(frame)? {
@@ -508,8 +473,8 @@ pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
     } else {
         throw_null_pointer_exception!(frame, context, 3);
     };
-    let (_object_class, object_fields) = match context.heap.get(object_ref) {
-        HeapObject::Object { class, fields } => (class, fields),
+    let object_fields = match context.heap.get(object_ref) {
+        HeapObject::Object { class: _, fields } => fields,
         _ => todo!("Throw Exception: Expected non array"),
     };
 
@@ -520,7 +485,7 @@ pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn put_field_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let (field_index, field_descriptor) =
         access_object_field(unvalidated_cp_index, frame, context.class_loader)?;
@@ -564,7 +529,7 @@ pub fn put_static_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let exception_ref = if let Some(ex_ref) = pop_reference(frame)? {
         ex_ref
     } else {
@@ -583,7 +548,7 @@ pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let type_info = if let Some(type_info) = frame
         .class
@@ -595,13 +560,7 @@ pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
         type_info.clone()
     } else {
         let class_index = validate_cp_index(unvalidated_cp_index)?;
-
-        let current_class = frame.class.clone();
-        let class_name = current_class
-            .class_file
-            .constant_pool
-            .get_class_name(class_index)
-            .expect("Should be validated");
+        let class_name = read_class_type(frame, class_index)?;
 
         let (expected_class, dimension_if_array) =
             determine_type_and_dimension_if_array(class_name, context.class_loader)?;
@@ -779,7 +738,7 @@ fn check_array_instance_of(
         ObjectArrayType::Primitive(descriptor_type) => *descriptor_type == array_type,
         ObjectArrayType::Class(jvm_class) => {
             if jvm_class.class_file.super_class_index.is_none() && 0 == expected_dimension {
-                return true;
+                return true; // early return
             } else {
                 false
             }

@@ -1,7 +1,7 @@
 use super::*;
 
 pub fn increment_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let index_value = read_u8_from_bytecode(frame) as usize;
     let const_value = read_u8_from_bytecode(frame) as i8;
 
@@ -67,7 +67,7 @@ where
     P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
     M: FnOnce(T, i32) -> JvmValue,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
 
     let value_2 = pop_int(frame)?;
     let value_1 = pop_fn(frame)?;
@@ -88,7 +88,7 @@ where
     P: Fn(&mut JvmStackFrame) -> JvmResult<T>,
     M: FnOnce(T, T) -> JvmValue,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
 
     let value_b = pop_fn(frame)?;
     let value_a = pop_fn(frame)?;
@@ -109,7 +109,7 @@ where
     P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
     M: FnOnce(T) -> JvmValue,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let value = pop_fn(frame)?;
     let result_value = math_fn(value);
     frame.operand_stack.push(result_value);
@@ -124,7 +124,7 @@ where
     M: FnOnce(T, T) -> JvmValue,
     T: PartialEq + Default,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
 
     let value_b = pop_fn(frame)?;
     let value_a = pop_fn(frame)?;

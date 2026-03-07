@@ -7,7 +7,7 @@ fn generic_load_n<F, T>(context: JvmContext, expect_fn: F) -> JvmResult<()>
 where
     F: FnOnce(JvmValue) -> JvmResult<T>,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let index_value = read_u8_from_bytecode(frame) as usize;
 
     if let Some(value) = frame.local_variables.get(index_value) {
@@ -25,7 +25,7 @@ fn generic_load<const INDEX: usize, F, T>(context: JvmContext, expect_fn: F) -> 
 where
     F: FnOnce(JvmValue) -> JvmResult<T>,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
 
     if let Some(value) = frame.local_variables.get(INDEX) {
         expect_fn(*value)?;
@@ -48,7 +48,7 @@ where
     W: FnOnce(T) -> JvmValue,
     T: Copy,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
 
     let index = pop_int(frame)?;
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
