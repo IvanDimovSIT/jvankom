@@ -94,12 +94,35 @@ impl JVM {
             state.static_fields = Some(determine_static_fields(&loaded_class.class_file));
         }
         drop(state);
+        Self::initialise_class_interfaces(loaded_class, class_loader)?;
 
         // recusrively load super classes
         if let Some(super_class_name) = loaded_class.class_file.get_super_class_name() {
             let super_class = class_loader.get(super_class_name)?;
             loaded_class.state.borrow_mut().super_class = Some(super_class.clone());
             return Self::initialise_class(thread, &super_class, class_loader, class_name);
+        }
+
+        Ok(())
+    }
+
+    fn initialise_class_interfaces(
+        loaded_class: &Rc<JvmClass>,
+        class_loader: &mut ClassLoader,
+    ) -> JvmResult<()> {
+        if !loaded_class.state.borrow().interfaces.is_empty() {
+            return Ok(());
+        }
+
+        for interface_index in &loaded_class.class_file.interfaces {
+            let interface_name = loaded_class
+                .class_file
+                .constant_pool
+                .get_class_name(*interface_index)
+                .expect("Interface index is invalid");
+            let interface = class_loader.get(interface_name)?;
+            Self::initialise_class_interfaces(&interface, class_loader)?;
+            loaded_class.state.borrow_mut().interfaces.push(interface);
         }
 
         Ok(())
@@ -942,13 +965,15 @@ mod tests {
             .map(|c| c.class_file.get_class_name().unwrap())
             .collect();
 
-        assert_eq!(5, jvm.class_loader.get_loaded_count());
+        assert_eq!(9, jvm.class_loader.get_loaded_count());
         let expected_loaded_classes = [
             "java/lang/String$CaseInsensitiveComparator",
             OBJECT_CLASS_NAME,
             STRING_CLASS_NAME,
             "TestString",
             "java/io/ObjectStreamField",
+            "java/io/Serializable",
+            "java/lang/Comparable",
         ];
         for expected in expected_loaded_classes {
             assert!(loaded_classes.contains(&expected));
@@ -1153,6 +1178,69 @@ mod tests {
         };
 
         assert_eq!(vec![1, 1, 1, 1, 1, 1, 0, 0, 0, 0], array.clone());
+    }
+
+    #[test]
+    fn test_interface_test_direct() {
+        test_interface_helper(1, 101, "testDirect");
+        test_interface_helper(1, 101, "testDirect2");
+    }
+
+    #[test]
+    fn test_interface_test_parent_as_interface() {
+        test_interface_helper(1, 11, "testParentAsInterface");
+        test_interface_helper(1, 11, "testParentAsInterface2");
+    }
+
+    #[test]
+    fn test_interface_test_extended_interface() {
+        test_interface_helper(1, 101, "testExtendedInterface");
+        test_interface_helper(1, 101, "testExtendedInterface2");
+    }
+
+    #[test]
+    fn test_interface_test_multi_k() {
+        test_interface_helper(1, 6, "testMultiK");
+        test_interface_helper(1, 6, "testMultiK2");
+    }
+
+    #[test]
+    fn test_interface_test_multi_k_child() {
+        test_interface_helper(1, 2, "testMultiKChild");
+        test_interface_helper(1, 2, "testMultiKChild2");
+    }
+
+    #[test]
+    fn test_interface_test_multi_l() {
+        test_interface_helper(1, 16, "testMultiL");
+        test_interface_helper(1, 16, "testMultiL2");
+    }
+
+    #[test]
+    fn test_interface_test_multi_i_on_child() {
+        test_interface_helper(1, 201, "testMultiIOnChild");
+        test_interface_helper(1, 201, "testMultiIOnChild2");
+    }
+
+    fn test_interface_helper(input: i32, output: i32, method_name: impl Into<String>) {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/InterfaceTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "InterfaceTest".to_owned(),
+                method_name.into(),
+                "(I)I".to_owned(),
+                vec![JvmValue::Int(input)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => assert_eq!(output, int),
+            _ => panic!("expected int"),
+        }
+        assert_interfaces_not_duplicated(jvm.class_loader.get_all_loaded_classes());
     }
 
     fn test_array_exceptions_unhandled_helper(size: i32, index: i32, expected: &str) {
@@ -1481,5 +1569,23 @@ mod tests {
         let class_loader = ClassLoader::new(contexts).unwrap();
         let heap = JvmHeap::new(2, 100);
         JVM::new(class_loader, heap)
+    }
+
+    fn assert_interfaces_not_duplicated<'a>(classes: impl Iterator<Item = &'a Rc<JvmClass>>) {
+        for class in classes {
+            let state = class.state.borrow();
+            assert_eq!(class.class_file.interfaces.len(), state.interfaces.len());
+            for interface in &state.interfaces {
+                let count = state
+                    .interfaces
+                    .iter()
+                    .filter(|int| {
+                        interface.class_file.get_class_name().unwrap()
+                            == int.class_file.get_class_name().unwrap()
+                    })
+                    .count();
+                assert_eq!(1, count)
+            }
+        }
     }
 }

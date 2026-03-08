@@ -107,6 +107,7 @@ pub const PUTFIELD: u8 = 0xb5;
 pub const INVOKEVIRTUAL: u8 = 0xb6;
 pub const INVOKESPECIAL: u8 = 0xb7;
 pub const INVOKESTATIC: u8 = 0xb8;
+pub const INVOKEINTERFACE: u8 = 0xb9;
 pub const NEW: u8 = 0xbb;
 pub const NEWARRAY: u8 = 0xbc;
 pub const ANEWARRAY: u8 = 0xbd;
@@ -204,6 +205,7 @@ impl BytecodeTable {
             (INVOKEVIRTUAL, invoke_virtual_instruction),
             (INVOKESPECIAL, invoke_static_or_special_instruction::<true>),
             (INVOKESTATIC, invoke_static_or_special_instruction::<false>),
+            (INVOKEINTERFACE, invoke_interface),
             (NEW, new_instruction),
             (NEWARRAY, new_array_instruction),
             (ANEWARRAY, new_object_array_instruction),

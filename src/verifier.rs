@@ -1,14 +1,9 @@
 use std::{error::Error, fmt::Display, num::NonZeroUsize};
 
 use crate::{
-    bytecode::{ALOAD, ASTORE, ILOAD, IRETURN, ISTORE, RETURN},
-    class_file::{Attribute, Bytecode, ClassFile, ConstantValue, Method},
+    class_file::{ClassFile, ConstantValue, Method},
     class_parser::UnverifiedClassFile,
 };
-
-const RETURN_INSTRUCTIONS: [u8; 2] = [RETURN, IRETURN];
-/// instructions which load or store a local, based on the bytecode
-const LOAD_STORE_N_INSTRUCTIONS: [u8; 4] = [ILOAD, ISTORE, ALOAD, ASTORE];
 
 pub type VerifierResult<T> = Result<T, VerifierError>;
 
@@ -50,72 +45,25 @@ impl Error for VerifierError {
 pub fn verify_class_file(unverified_class_file: UnverifiedClassFile) -> VerifierResult<ClassFile> {
     let class = unverified_class_file.mark_verified();
 
-    // TODO: Fix verification!
-    // verify_returns(&class)?;
-    // verify_load_and_stores(&class)?;
+    // TODO: improve verification
     verify_constant_pool(&class)?;
+    verify_methods(&class)?;
+    verify_interfaces(&class)?;
     Ok(class)
 }
 
-fn verify_returns(class: &ClassFile) -> VerifierResult<()> {
+fn verify_methods(class: &ClassFile) -> VerifierResult<()> {
     for method in &class.methods {
-        for atr in &method.attributes {
-            let _descriptor = get_descriptor(class, method)?;
-
-            let has_return = match atr {
-                Attribute::Code(bytecode) => bytecode
-                    .code
-                    .last()
-                    .map(|c| RETURN_INSTRUCTIONS.contains(c))
-                    .unwrap_or(false),
-                _ => {
-                    continue;
-                }
-            };
-
-            return if has_return {
-                Ok(())
-            } else {
-                Err(VerifierError::MissingReturnFromMethod)
-            };
-        }
+        verify_utf8_constant(class, method.name_index)?;
+        let _descriptor = get_descriptor(class, method)?;
     }
 
     Ok(())
 }
 
-fn verify_load_and_stores(class: &ClassFile) -> VerifierResult<()> {
-    for method in &class.methods {
-        for atr in &method.attributes {
-            match atr {
-                Attribute::Code(bytecode) => {
-                    verify_load_store_bytecode(bytecode)?;
-                }
-                _ => continue,
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn verify_load_store_bytecode(bytecode: &Bytecode) -> VerifierResult<()> {
-    let bytecode_len = bytecode.code.len();
-    if bytecode_len < 2 {
-        return Ok(());
-    }
-    if LOAD_STORE_N_INSTRUCTIONS.contains(&bytecode.code[bytecode_len - 2]) {
-        return Err(VerifierError::InvalidIndexingInstruction);
-    }
-    for codes in bytecode.code.windows(2) {
-        if !LOAD_STORE_N_INSTRUCTIONS.contains(&codes[0]) {
-            continue;
-        }
-
-        let address = codes[1];
-        if address as u16 >= bytecode.max_locals {
-            return Err(VerifierError::InvalidIndexingInstruction);
-        }
+fn verify_interfaces(class: &ClassFile) -> VerifierResult<()> {
+    for interface in &class.interfaces {
+        verify_class_index(class, *interface)?;
     }
 
     Ok(())

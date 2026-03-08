@@ -126,6 +126,7 @@ pub enum JvmError {
     InvalidMethodDescriptor(String),
     InvalidConstantPoolIndex,
     InvalidMethodRefIndex(NonZeroUsize),
+    InvalidInterfaceMethodRefIndex(NonZeroUsize),
     InvalidFieldRefIndex(NonZeroUsize),
     InvalidClassIndex(NonZeroUsize),
     VirtualMethodError {
@@ -211,6 +212,9 @@ impl Display for JvmError {
             }
             JvmError::InvalidMethodRefIndex(index) => {
                 format!("Invalid method ref index: '{index}'")
+            }
+            JvmError::InvalidInterfaceMethodRefIndex(index) => {
+                format!("Invalid interface method ref index: '{index}'")
             }
             JvmError::InvalidFieldRefIndex(index) => {
                 format!("Invalid field ref index: '{index}'")
@@ -534,8 +538,16 @@ impl JvmClass {
 
     pub fn is_sublcass_of(parent: &Rc<JvmClass>, child: &Rc<JvmClass>) -> bool {
         if Rc::as_ptr(parent) == Rc::as_ptr(child) {
-            true
-        } else if let Some(super_class) = &child.state.borrow().super_class {
+            return true;
+        }
+
+        for interface in &child.state.borrow().interfaces {
+            if Self::is_sublcass_of(parent, interface) {
+                return true;
+            }
+        }
+
+        if let Some(super_class) = &child.state.borrow().super_class {
             Self::is_sublcass_of(parent, super_class)
         } else {
             false
@@ -551,6 +563,7 @@ pub struct ClassState {
     pub super_class: Option<Rc<JvmClass>>,
     pub v_table: VTable,
     pub cache: ClassCache,
+    pub interfaces: Vec<Rc<JvmClass>>,
 }
 impl Default for ClassState {
     fn default() -> Self {
@@ -562,6 +575,7 @@ impl Default for ClassState {
             v_table: VTable::new(),
             static_fields: None,
             cache: ClassCache::new(),
+            interfaces: vec![],
         }
     }
 }

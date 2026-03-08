@@ -597,6 +597,139 @@ pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
+pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
+    let frame = context.current_thread.top_frame();
+    let (index, count) = read_invokeinterface_params(frame)?;
+    let current_class = frame.class.clone();
+    let (interface_name, method_name, method_desc) = if let Some(interface_info) = current_class
+        .class_file
+        .constant_pool
+        .get_interface_method(index)
+    {
+        interface_info
+    } else {
+        return Err(JvmError::InvalidInterfaceMethodRefIndex(index).bx());
+    };
+
+    let interface = context.class_loader.get(interface_name)?;
+    if !interface.state.borrow().is_initialised {
+        initialise_class_and_rewind!(frame, context, &interface, 5);
+    }
+
+    let param_types = parse_descriptor(method_desc)?;
+    let params = if let Some(params) = pop_params_for_special(&param_types, frame)? {
+        params
+    } else {
+        throw_null_pointer_exception!(frame, context, 5);
+    };
+
+    let object_ref = match params[0] {
+        JvmValue::Reference(Some(non_zero)) => non_zero,
+        _ => unreachable!("type and null already checked"),
+    };
+    let called_object = context.heap.get(object_ref);
+
+    let object_class = match called_object {
+        HeapObject::Object { class, fields: _ } => class.clone(),
+        _ => context.class_loader.get(OBJECT_CLASS_NAME)?,
+    };
+
+    if !JvmClass::is_sublcass_of(&interface, &object_class) {
+        todo!("Throw IncompatibleClassChangeError");
+    }
+
+    let v_table_entry = if let Some(v_table_entry) = object_class
+        .state
+        .borrow()
+        .v_table
+        .get(method_name, method_desc)
+    {
+        v_table_entry
+    } else {
+        let v_table_entry = find_virtual_method(&object_class, method_name, method_desc)?;
+        object_class.state.borrow_mut().v_table.register(
+            method_name,
+            method_desc,
+            v_table_entry.clone(),
+        );
+        v_table_entry
+    };
+
+    let called_method =
+        &v_table_entry.resolved_class.class_file.methods[v_table_entry.method_index];
+    if called_method
+        .access_flags
+        .check_flag(MethodAccessFlags::STATIC_FLAG)
+    {
+        todo!("Throw IncopatibleClassChangeError")
+    }
+    if called_method
+        .access_flags
+        .check_flag(MethodAccessFlags::PRIVATE_FLAG)
+        && Rc::as_ptr(&v_table_entry.resolved_class) != Rc::as_ptr(&frame.class)
+    {
+        throw_illegal_access_error!(frame, context, 5);
+    }
+
+    if let Some(bytecode_index) = v_table_entry.bytecode_index {
+        let new_frame = JvmStackFrame::new(
+            v_table_entry.resolved_class,
+            v_table_entry.method_index,
+            bytecode_index,
+            params,
+        );
+
+        context.current_thread.push(new_frame);
+    } else {
+        if !called_method
+            .access_flags
+            .check_flag(MethodAccessFlags::NATIVE_FLAG)
+        {
+            todo!("should be native method")
+        }
+
+        return context.native_method_resolver.execute_native_method(
+            context.current_thread,
+            context.heap,
+            context.class_loader,
+            params,
+            v_table_entry.method_index,
+            v_table_entry.resolved_class,
+        );
+    }
+
+    Ok(())
+}
+
+fn read_invokeinterface_params(frame: &mut JvmStackFrame) -> JvmResult<(NonZeroUsize, usize)> {
+    let bytecode =
+        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+
+    let index_byte1 = bytecode.code[frame.program_counter] as usize;
+    frame.program_counter += 1;
+    debug_assert!(frame.program_counter < bytecode.code.len());
+
+    let index_byte2 = bytecode.code[frame.program_counter] as usize;
+    frame.program_counter += 1;
+    debug_assert!(frame.program_counter < bytecode.code.len());
+
+    let index = if let Some(ind) = NonZeroUsize::new((index_byte1 << 8) | index_byte2) {
+        ind
+    } else {
+        return Err(JvmError::InvalidConstantPoolIndex.bx());
+    };
+
+    let count = bytecode.code[frame.program_counter] as usize;
+    frame.program_counter += 1;
+    debug_assert!(frame.program_counter < bytecode.code.len());
+
+    let _zero_reserved = bytecode.code[frame.program_counter] as usize;
+    frame.program_counter += 1;
+    debug_assert!(frame.program_counter < bytecode.code.len());
+
+    Ok((index, count))
+}
+
 /// convert type reference to array type
 fn determine_object_array_type_and_dimension(
     type_info: TypeInfo,
