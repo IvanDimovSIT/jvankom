@@ -248,6 +248,22 @@ fn handle_unrecognised_instruction(context: JvmContext) -> JvmResult<()> {
     Err(JvmError::UnimplementedInstruction(unrecognised_bytecode).bx())
 }
 
+/// initialises the class and rewinds the instruction, where $size is the size of the instruction
+#[macro_export]
+macro_rules! initialise_class_and_rewind {
+    ($frame:expr, $context:expr, $jvm_class:expr, $size:expr) => {{
+        const _CHECK_SIZE: () = assert!($size > 0);
+
+        $frame.program_counter -= $size; // rewind
+        return JVM::initialise_class(
+            $context.current_thread,
+            $jvm_class,
+            $context.class_loader,
+            $jvm_class.class_file.get_class_name().unwrap(),
+        );
+    }};
+}
+
 fn validate_cp_index(unvalidated_cp_index: u16) -> JvmResult<NonZeroUsize> {
     if let Some(index) = NonZeroUsize::new(unvalidated_cp_index as usize) {
         Ok(index)

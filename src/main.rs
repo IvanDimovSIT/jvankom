@@ -15,7 +15,6 @@ mod field_initialisation;
 mod jvm;
 mod jvm_heap;
 mod jvm_model;
-mod macros;
 mod method_call_cache;
 mod native_method_resolver;
 mod string_pool;

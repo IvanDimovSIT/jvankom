@@ -13,6 +13,70 @@ use crate::{
 const EXCEPTION_CONSTRUCTOR_NAME: &str = "<init>";
 const EXCEPTION_CONSTRUCTOR_DESC: &str = "()V";
 
+/// throws a NullPointerException, $size is the size of the instruction
+#[macro_export]
+macro_rules! throw_null_pointer_exception {
+    ($frame:expr, $context:expr, $size:expr) => {{
+        const _CHECK_SIZE: () = assert!($size > 0);
+
+        $frame.program_counter -= $size - 1; // rewind
+        return $crate::exceptions::throw_jvm_exception(
+            $context.current_thread,
+            $context.heap,
+            $context.class_loader,
+            $crate::jvm_model::NULL_POINTER_EXCEPTION_NAME,
+        );
+    }};
+}
+
+/// throws a ArrayIndexOutOfBoundsException, $size is the size of the instruction
+#[macro_export]
+macro_rules! throw_array_index_out_of_bounds_exception {
+    ($frame:expr, $context:expr, $size:expr) => {{
+        const _CHECK_SIZE: () = assert!($size > 0);
+
+        $frame.program_counter -= $size - 1; // rewind
+        return $crate::exceptions::throw_jvm_exception(
+            $context.current_thread,
+            $context.heap,
+            $context.class_loader,
+            $crate::jvm_model::ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME,
+        );
+    }};
+}
+
+///  throws a NegativeArraySizeException, $size is the size of the instruction
+#[macro_export]
+macro_rules! throw_negative_array_size_exception {
+    ($frame:expr, $context:expr, $size:expr) => {{
+        const _CHECK_SIZE: () = assert!($size > 0);
+
+        $frame.program_counter -= $size - 1; // rewind
+        return $crate::exceptions::throw_jvm_exception(
+            $context.current_thread,
+            $context.heap,
+            $context.class_loader,
+            $crate::jvm_model::NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME,
+        );
+    }};
+}
+
+///  throws a ArrayStoreException, $size is the size of the instruction
+#[macro_export]
+macro_rules! throw_array_store_exception {
+    ($frame:expr, $context:expr, $size:expr) => {{
+        const _CHECK_SIZE: () = assert!($size > 0);
+
+        $frame.program_counter -= $size - 1; // rewind
+        return $crate::exceptions::throw_jvm_exception(
+            $context.current_thread,
+            $context.heap,
+            $context.class_loader,
+            $crate::jvm_model::ARRAY_STORE_EXCEPTION_NAME,
+        );
+    }};
+}
+
 /// handles exceptions - the PC must not include increments from multi-byte instructions
 pub fn handle_exception(
     thread: &mut JvmThread,
@@ -99,7 +163,8 @@ pub fn throw_jvm_exception(
     class_loader: &mut ClassLoader,
     exception_type: &str,
 ) -> JvmResult<()> {
-    let frames_start = thread.len();
+    let constructor_frame_index = thread.len();
+    let throwing_frame_index = constructor_frame_index - 1;
     let exception_class = class_loader.get(exception_type)?;
     if !exception_class.state.borrow().is_initialised {
         JVM::initialise_class(thread, &exception_class, class_loader, exception_type)?;
@@ -124,24 +189,11 @@ pub fn throw_jvm_exception(
     };
     let exception_ref = heap.allocate(exception_object);
     let exception_ref_value = JvmValue::Reference(Some(exception_ref));
-    let pushed_class_init = frames_start != thread.len();
-
     let constructor_frame = call_exception_constructor(exception_class, exception_ref_value)?;
-    if pushed_class_init {
-        thread.push_second(constructor_frame);
-    } else {
-        thread.push(constructor_frame);
-    }
+    thread.insert(constructor_frame_index, constructor_frame);
 
-    let frame = if pushed_class_init {
-        debug_assert_eq!(frames_start + 2, thread.len());
-        thread.peek_third().unwrap()
-    } else {
-        debug_assert_eq!(frames_start + 1, thread.len());
-        thread.peek_second().unwrap()
-    };
-
-    frame.set_exception(exception_ref);
+    let throwing_frame = thread.peek_at(throwing_frame_index);
+    throwing_frame.set_exception(exception_ref);
 
     Ok(())
 }

@@ -449,11 +449,6 @@ impl JvmThread {
         self.stack.push(frame);
     }
 
-    pub fn push_second(&mut self, frame: JvmStackFrame) {
-        debug_assert!(!self.stack.is_empty());
-        self.stack.insert(self.stack.len() - 1, frame);
-    }
-
     pub fn pop(&mut self) -> Option<JvmStackFrame> {
         self.stack.pop()
     }
@@ -466,22 +461,12 @@ impl JvmThread {
         self.stack.last_mut().expect("No frames found")
     }
 
-    pub fn peek_second(&mut self) -> Option<&mut JvmStackFrame> {
-        let stack_len = self.stack.len();
-        if stack_len < 2 {
-            None
-        } else {
-            Some(&mut self.stack[stack_len - 2])
-        }
+    pub fn insert(&mut self, index: usize, frame: JvmStackFrame) {
+        self.stack.insert(index, frame);
     }
 
-    pub fn peek_third(&mut self) -> Option<&mut JvmStackFrame> {
-        let stack_len = self.stack.len();
-        if stack_len < 3 {
-            None
-        } else {
-            Some(&mut self.stack[stack_len - 3])
-        }
+    pub fn peek_at(&mut self, index: usize) -> &mut JvmStackFrame {
+        &mut self.stack[index]
     }
 
     pub fn get_stack_frames(&self) -> &[JvmStackFrame] {
