@@ -1,3 +1,5 @@
+use crate::throw_arithmetic_exception;
+
 use super::*;
 
 pub fn increment_instruction(context: JvmContext) -> JvmResult<()> {
@@ -129,7 +131,7 @@ where
     let value_b = pop_fn(frame)?;
     let value_a = pop_fn(frame)?;
     if value_b == T::default() {
-        todo!("Throw ArithmeticException");
+        throw_arithmetic_exception!(frame, context, 1);
     }
 
     let result_value = math_fn(value_a, value_b);

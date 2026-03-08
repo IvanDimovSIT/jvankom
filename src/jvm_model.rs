@@ -25,6 +25,8 @@ pub const NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME: &str = "java/lang/NegativeArraySiz
 pub const ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME: &str =
     "java/lang/ArrayIndexOutOfBoundsException";
 pub const ARRAY_STORE_EXCEPTION_NAME: &str = "java/lang/ArrayStoreException";
+pub const ARITHMETIC_EXCEPTION_NAME: &str = "java/lang/ArithmeticException";
+pub const ILLEGAL_ACCESS_ERROR_NAME: &str = "java/lang/IllegalAccessError";
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
 

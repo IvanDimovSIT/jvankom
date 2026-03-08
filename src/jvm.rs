@@ -253,7 +253,7 @@ mod tests {
     use crate::{
         class_loader::ClassSource,
         jvm_model::{
-            ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME, HeapObject,
+            ARITHMETIC_EXCEPTION_NAME, ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME, HeapObject,
             NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME, NULL_POINTER_EXCEPTION_NAME, OBJECT_CLASS_NAME,
             STRING_CLASS_NAME,
         },
@@ -426,6 +426,29 @@ mod tests {
                 _ => panic!("expected int array"),
             },
             _ => panic!("expected array"),
+        }
+    }
+
+    #[test]
+    fn test_integer_math_divide_by_zero() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
+        let result = jvm.run(
+            "IntegerMathTest".to_owned(),
+            "mainCall".to_owned(),
+            "(II)[I".to_owned(),
+            vec![JvmValue::Int(8), JvmValue::Int(0)],
+        );
+
+        match result {
+            Err(err) => match *err {
+                JvmError::UnhandledException {
+                    reference: _,
+                    class_name,
+                    fields: _,
+                } => assert_eq!(ARITHMETIC_EXCEPTION_NAME, class_name),
+                _ => panic!("expected UnhandledException"),
+            },
+            _ => panic!("expected exception"),
         }
     }
 

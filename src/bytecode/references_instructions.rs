@@ -12,7 +12,7 @@ use crate::{
         DescriptorType, JvmClass, OBJECT_CLASS_NAME, ObjectArray, ObjectArrayType, StaticFieldInfo,
     },
     method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
-    throw_negative_array_size_exception, throw_null_pointer_exception,
+    throw_illegal_access_error, throw_negative_array_size_exception, throw_null_pointer_exception,
     v_table::VTableEntry,
 };
 
@@ -220,7 +220,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
         .check_flag(MethodAccessFlags::PRIVATE_FLAG)
         && Rc::as_ptr(&loaded_class) != Rc::as_ptr(&frame.class)
     {
-        todo!("Throw IllegalAccessError")
+        throw_illegal_access_error!(frame, context, 3);
     }
 
     // register method in cache
@@ -431,7 +431,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
         .check_flag(MethodAccessFlags::PRIVATE_FLAG)
         && Rc::as_ptr(&v_table_entry.resolved_class) != Rc::as_ptr(&frame.class)
     {
-        todo!("Throw IllegalAccessError")
+        throw_illegal_access_error!(frame, context, 3);
     }
 
     if let Some(bytecode_index) = v_table_entry.bytecode_index {
