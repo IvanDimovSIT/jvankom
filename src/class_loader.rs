@@ -12,7 +12,7 @@ use zip::ZipArchive;
 use crate::{
     class_file::ClassFile,
     class_parser::{self, ClassParserError, UnverifiedClassFile},
-    jvm_model::{JvmClass, JvmError, JvmResult},
+    jvm_model::{JvmClass, JvmError, JvmResult, THROWABLE_INTERFACE_NAME},
     verifier,
 };
 
@@ -44,6 +44,7 @@ impl Error for ClassLoaderError {}
 #[derive(Debug)]
 pub struct ClassLoader {
     loaded_classes: HashMap<String, Rc<JvmClass>>,
+    throwable_class: Option<Rc<JvmClass>>,
     jars: Vec<ZipArchive<File>>,
     directories: Vec<String>,
 }
@@ -81,6 +82,7 @@ impl ClassLoader {
                 loaded_classes: HashMap::new(),
                 directories,
                 jars,
+                throwable_class: None,
             })
         } else {
             Err(ClassLoaderError { invalid_sources })
@@ -89,6 +91,16 @@ impl ClassLoader {
 
     pub fn get_all_loaded_classes(&self) -> impl Iterator<Item = &Rc<JvmClass>> {
         self.loaded_classes.values()
+    }
+
+    pub fn get_throwable(&mut self) -> JvmResult<Rc<JvmClass>> {
+        if let Some(throwable) = &self.throwable_class {
+            Ok(throwable.clone())
+        } else {
+            let throwable = self.get(THROWABLE_INTERFACE_NAME)?;
+            self.throwable_class = Some(throwable.clone());
+            Ok(throwable)
+        }
     }
 
     pub fn get_loaded_count(&self) -> usize {

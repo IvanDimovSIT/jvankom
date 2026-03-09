@@ -27,6 +27,7 @@ pub const ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME: &str =
 pub const ARRAY_STORE_EXCEPTION_NAME: &str = "java/lang/ArrayStoreException";
 pub const ARITHMETIC_EXCEPTION_NAME: &str = "java/lang/ArithmeticException";
 pub const ILLEGAL_ACCESS_ERROR_NAME: &str = "java/lang/IllegalAccessError";
+pub const THROWABLE_INTERFACE_NAME: &str = "java/lang/Throwable";
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
 
@@ -107,6 +108,7 @@ pub enum JvmError {
     UnimplementedInstruction(u8),
     NoOperandFound,
     NoLocalVariableFound,
+    ExpectedThrowable,
     ProgramCounterOutOfBounds {
         current_index: usize,
         bytecode_len: usize,
@@ -273,6 +275,7 @@ impl Display for JvmError {
             JvmError::InvalidMultidimensionalPrimitiveArrayDimension => {
                 "Invalid multi-dimensional primitive array dimension".to_owned()
             }
+            JvmError::ExpectedThrowable => "Expected class to be instance of Throwable".to_owned(),
         };
 
         f.write_str(&description)

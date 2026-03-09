@@ -1182,47 +1182,58 @@ mod tests {
 
     #[test]
     fn test_interface_test_direct() {
-        test_interface_helper(1, 101, "testDirect");
-        test_interface_helper(1, 101, "testDirect2");
+        test_interface_helper(1, 101, "testDirect", 1);
+        test_interface_helper(1, 101, "testDirect2", 5);
     }
 
     #[test]
     fn test_interface_test_parent_as_interface() {
-        test_interface_helper(1, 11, "testParentAsInterface");
-        test_interface_helper(1, 11, "testParentAsInterface2");
+        test_interface_helper(1, 11, "testParentAsInterface", 1);
+        test_interface_helper(1, 11, "testParentAsInterface2", 5);
     }
 
     #[test]
     fn test_interface_test_extended_interface() {
-        test_interface_helper(1, 101, "testExtendedInterface");
-        test_interface_helper(1, 101, "testExtendedInterface2");
+        test_interface_helper(1, 101, "testExtendedInterface", 1);
+        test_interface_helper(1, 101, "testExtendedInterface2", 5);
     }
 
     #[test]
     fn test_interface_test_multi_k() {
-        test_interface_helper(1, 6, "testMultiK");
-        test_interface_helper(1, 6, "testMultiK2");
+        test_interface_helper(1, 6, "testMultiK", 1);
+        test_interface_helper(1, 6, "testMultiK2", 5);
     }
 
     #[test]
     fn test_interface_test_multi_k_child() {
-        test_interface_helper(1, 2, "testMultiKChild");
-        test_interface_helper(1, 2, "testMultiKChild2");
+        test_interface_helper(1, 2, "testMultiKChild", 3);
+        test_interface_helper(1, 2, "testMultiKChild2", 11);
     }
 
     #[test]
     fn test_interface_test_multi_l() {
-        test_interface_helper(1, 16, "testMultiL");
-        test_interface_helper(1, 16, "testMultiL2");
+        test_interface_helper(1, 16, "testMultiL", 1);
+        test_interface_helper(1, 16, "testMultiL2", 5);
     }
 
     #[test]
     fn test_interface_test_multi_i_on_child() {
-        test_interface_helper(1, 201, "testMultiIOnChild");
-        test_interface_helper(1, 201, "testMultiIOnChild2");
+        test_interface_helper(1, 201, "testMultiIOnChild", 1);
+        test_interface_helper(1, 201, "testMultiIOnChild2", 5);
     }
 
-    fn test_interface_helper(input: i32, output: i32, method_name: impl Into<String>) {
+    #[test]
+    fn test_interface_test_default_interface() {
+        test_interface_helper(1, 51, "testDefaultInterface", 1);
+        test_interface_helper(1, 51, "testDefaultInterface2", 5);
+    }
+
+    fn test_interface_helper(
+        input: i32,
+        output: i32,
+        method_name: impl Into<String>,
+        cache_hits: usize,
+    ) {
         let mut jvm = create_jvm(vec![ClassSource::Jar(
             "test_classes/InterfaceTest.jar".to_owned(),
         )]);
@@ -1241,6 +1252,16 @@ mod tests {
             _ => panic!("expected int"),
         }
         assert_interfaces_not_duplicated(jvm.class_loader.get_all_loaded_classes());
+        assert_eq!(
+            cache_hits,
+            jvm.class_loader
+                .get("InterfaceTest")
+                .unwrap()
+                .state
+                .borrow()
+                .cache
+                .get_cache_hits()
+        );
     }
 
     fn test_array_exceptions_unhandled_helper(size: i32, index: i32, expected: &str) {

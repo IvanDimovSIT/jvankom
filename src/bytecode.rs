@@ -288,6 +288,23 @@ fn read_method_ref(class: &JvmClass, method_ref: NonZeroUsize) -> JvmResult<(&st
     }
 }
 
+/// returns the class, method name and method descriptor based on interface method ref index,
+/// 'class' is the class holding the CP value
+fn read_interface_method_ref(
+    class: &JvmClass,
+    interface_method_ref: NonZeroUsize,
+) -> JvmResult<(&str, &str, &str)> {
+    if let Some(interface_info) = class
+        .class_file
+        .constant_pool
+        .get_interface_method(interface_method_ref)
+    {
+        Ok(interface_info)
+    } else {
+        Err(JvmError::InvalidInterfaceMethodRefIndex(interface_method_ref).bx())
+    }
+}
+
 fn read_class_type(frame: &mut JvmStackFrame, type_index: NonZeroUsize) -> JvmResult<&str> {
     if let Some(arr_type) = frame
         .class
