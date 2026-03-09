@@ -27,6 +27,7 @@ pub const ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME: &str =
 pub const ARRAY_STORE_EXCEPTION_NAME: &str = "java/lang/ArrayStoreException";
 pub const ARITHMETIC_EXCEPTION_NAME: &str = "java/lang/ArithmeticException";
 pub const ILLEGAL_ACCESS_ERROR_NAME: &str = "java/lang/IllegalAccessError";
+pub const THROWABLE_INTERFACE_NAME: &str = "java/lang/Throwable";
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
 
@@ -107,6 +108,7 @@ pub enum JvmError {
     UnimplementedInstruction(u8),
     NoOperandFound,
     NoLocalVariableFound,
+    ExpectedThrowable,
     ProgramCounterOutOfBounds {
         current_index: usize,
         bytecode_len: usize,
@@ -126,6 +128,7 @@ pub enum JvmError {
     InvalidMethodDescriptor(String),
     InvalidConstantPoolIndex,
     InvalidMethodRefIndex(NonZeroUsize),
+    InvalidInterfaceMethodRefIndex(NonZeroUsize),
     InvalidFieldRefIndex(NonZeroUsize),
     InvalidClassIndex(NonZeroUsize),
     VirtualMethodError {
@@ -212,6 +215,9 @@ impl Display for JvmError {
             JvmError::InvalidMethodRefIndex(index) => {
                 format!("Invalid method ref index: '{index}'")
             }
+            JvmError::InvalidInterfaceMethodRefIndex(index) => {
+                format!("Invalid interface method ref index: '{index}'")
+            }
             JvmError::InvalidFieldRefIndex(index) => {
                 format!("Invalid field ref index: '{index}'")
             }
@@ -269,6 +275,7 @@ impl Display for JvmError {
             JvmError::InvalidMultidimensionalPrimitiveArrayDimension => {
                 "Invalid multi-dimensional primitive array dimension".to_owned()
             }
+            JvmError::ExpectedThrowable => "Expected class to be instance of Throwable".to_owned(),
         };
 
         f.write_str(&description)
@@ -534,8 +541,16 @@ impl JvmClass {
 
     pub fn is_sublcass_of(parent: &Rc<JvmClass>, child: &Rc<JvmClass>) -> bool {
         if Rc::as_ptr(parent) == Rc::as_ptr(child) {
-            true
-        } else if let Some(super_class) = &child.state.borrow().super_class {
+            return true;
+        }
+
+        for interface in &child.state.borrow().interfaces {
+            if Self::is_sublcass_of(parent, interface) {
+                return true;
+            }
+        }
+
+        if let Some(super_class) = &child.state.borrow().super_class {
             Self::is_sublcass_of(parent, super_class)
         } else {
             false
@@ -551,6 +566,7 @@ pub struct ClassState {
     pub super_class: Option<Rc<JvmClass>>,
     pub v_table: VTable,
     pub cache: ClassCache,
+    pub interfaces: Vec<Rc<JvmClass>>,
 }
 impl Default for ClassState {
     fn default() -> Self {
@@ -562,6 +578,7 @@ impl Default for ClassState {
             v_table: VTable::new(),
             static_fields: None,
             cache: ClassCache::new(),
+            interfaces: vec![],
         }
     }
 }

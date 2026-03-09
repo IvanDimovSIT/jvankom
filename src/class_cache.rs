@@ -1,10 +1,10 @@
 #[cfg(debug_assertions)]
 use std::cell::Cell;
-use std::{mem, rc::Rc};
+use std::{mem, num::NonZeroUsize, rc::Rc};
 
 use crate::{
     jvm_model::{JvmClass, ObjectArrayType},
-    method_call_cache::{StaticMethodCallInfo, VirtualMethodCallInfo},
+    method_call_cache::{InterfaceMethodCallInfo, StaticMethodCallInfo, VirtualMethodCallInfo},
 };
 
 #[derive(Debug, Clone)]
@@ -24,6 +24,7 @@ pub struct TypeInfo {
 pub enum CacheEntry {
     StaticMethodCall(StaticMethodCallInfo),
     VirtualMethodCall(VirtualMethodCallInfo),
+    InterfaceMethodCall(InterfaceMethodCallInfo),
     Type(TypeInfo),
     StaticFieldAccess(FieldAccessInfo),
     NonStaticFieldAccess(FieldAccessInfo),
@@ -121,6 +122,22 @@ impl ClassCache {
         let entry = self.get_entry(index)?;
         match entry.as_ref() {
             CacheEntry::VirtualMethodCall(info) => {
+                #[cfg(debug_assertions)]
+                {
+                    self.cache_hits.set(self.cache_hits.get() + 1);
+                }
+
+                Some(info)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn get_interface_method(&self, index: NonZeroUsize) -> Option<&InterfaceMethodCallInfo> {
+        debug_assert!(index.get() <= u16::MAX as usize);
+        let entry = self.get_entry(index.get() as u16)?;
+        match entry.as_ref() {
+            CacheEntry::InterfaceMethodCall(info) => {
                 #[cfg(debug_assertions)]
                 {
                     self.cache_hits.set(self.cache_hits.get() + 1);

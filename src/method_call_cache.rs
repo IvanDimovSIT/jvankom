@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, rc::Rc};
+use std::{collections::HashMap, hash::Hash, num::NonZeroUsize, rc::Rc};
 
 use crate::{
     class_cache::CacheEntry,
@@ -38,6 +38,15 @@ pub struct VirtualMethodCallInfo {
     pub parameter_list: Vec<DescriptorType>,
 }
 
+#[derive(Debug, Clone)]
+pub struct InterfaceMethodCallInfo {
+    pub interface: Rc<JvmClass>,
+    pub method_name: String,
+    pub descriptor: String,
+    /// list of types in stack pop order (reversed)
+    pub parameter_list: Vec<DescriptorType>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VirtualMethodInfoKey {
     pub method_name: String,
@@ -52,17 +61,35 @@ impl From<VirtualMethodCallInfo> for VirtualMethodInfoKey {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InterfaceMethodInfoKey {
+    pub method_name: String,
+    pub descriptor: String,
+    pub interface_ptr: usize,
+}
+impl From<InterfaceMethodCallInfo> for InterfaceMethodInfoKey {
+    fn from(value: InterfaceMethodCallInfo) -> Self {
+        Self {
+            method_name: value.method_name,
+            descriptor: value.descriptor,
+            interface_ptr: Rc::as_ptr(&value.interface) as usize,
+        }
+    }
+}
+
 /// for registering and deduplication of method call cache entries
 #[derive(Debug)]
 pub struct MethodCallCache {
     static_method_info_identity: HashMap<StaticMethodInfoKey, Rc<CacheEntry>>,
     virtual_method_info_identity: HashMap<VirtualMethodInfoKey, Rc<CacheEntry>>,
+    interface_method_info_identity: HashMap<InterfaceMethodInfoKey, Rc<CacheEntry>>,
 }
 impl MethodCallCache {
     pub fn new() -> Self {
         Self {
             static_method_info_identity: HashMap::new(),
             virtual_method_info_identity: HashMap::new(),
+            interface_method_info_identity: HashMap::new(),
         }
     }
 
@@ -120,6 +147,22 @@ impl MethodCallCache {
             method_ref_index,
             caller_class,
             CacheEntry::StaticMethodCall,
+        )
+    }
+
+    pub fn register_interface_call_info(
+        &mut self,
+        interface_method_call_info: InterfaceMethodCallInfo,
+        method_ref_index: NonZeroUsize,
+        caller_class: &Rc<JvmClass>,
+    ) {
+        debug_assert!(method_ref_index.get() <= u16::MAX as usize);
+        Self::register_generic_call_info(
+            &mut self.interface_method_info_identity,
+            interface_method_call_info,
+            method_ref_index.get() as u16,
+            caller_class,
+            CacheEntry::InterfaceMethodCall,
         )
     }
 }

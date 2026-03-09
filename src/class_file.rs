@@ -239,6 +239,26 @@ impl ConstantPool {
         }
     }
 
+    /// returns the class name, method name and method descriptor
+    pub fn get_interface_method(
+        &self,
+        interface_method_ref_index: NonZeroUsize,
+    ) -> Option<(&str, &str, &str)> {
+        match self.get(interface_method_ref_index) {
+            ConstantValue::InterfaceMethodRef {
+                class_index,
+                name_and_type_index,
+            } => {
+                let class = self.get_class_name(*class_index)?;
+                let (method_name, method_descriptor) =
+                    self.get_name_and_type(*name_and_type_index)?;
+
+                Some((class, method_name, method_descriptor))
+            }
+            _ => None,
+        }
+    }
+
     /// returns the class, method name and method descriptor based on method ref index
     pub fn get_class_methodname_descriptor(
         &self,
@@ -327,7 +347,7 @@ impl ClassAccessFlags {
         if flags.check_flag(Self::ANNOTATION_FLAG) && !flags.check_flag(Self::INTERFACE_FLAG) {
             return None;
         }
-        if flags.check_flag(Self::ENUM_FLAG) && flags.check_flag(Self::FINAL_FLAG) {
+        if flags.check_flag(Self::ENUM_FLAG) && !flags.check_flag(Self::FINAL_FLAG) {
             return None;
         }
 
