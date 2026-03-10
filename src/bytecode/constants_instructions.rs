@@ -4,7 +4,6 @@ use crate::{
     class_file::ConstantValue,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     initialise_class_and_rewind,
-    jvm::JVM,
     jvm_model::{CLASS_CLASS_NAME, JvmClass, STRING_CLASS_NAME},
 };
 
@@ -66,6 +65,7 @@ pub fn ldc2w_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 2;
     let frame = context.current_thread.top_frame();
     let bytecode_value = read_u8_from_bytecode(frame) as u16;
     let constant_index = validate_cp_index(bytecode_value)?;
@@ -77,7 +77,7 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
             let class_class = context.class_loader.get(CLASS_CLASS_NAME)?;
 
             if !class_class.state.borrow().is_initialised {
-                initialise_class_and_rewind!(frame, context, &class_class, 2);
+                initialise_class_and_rewind!(frame, context, &class_class, INSTRUCTION_SIZE);
             }
 
             let class_name = frame
@@ -97,7 +97,7 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
 
             // initialise class and rewind
             if !string_class.state.borrow().is_initialised {
-                initialise_class_and_rewind!(frame, context, &string_class, 2);
+                initialise_class_and_rewind!(frame, context, &string_class, INSTRUCTION_SIZE);
             }
 
             let mut string_obj = create_string_object(&string_class)?;

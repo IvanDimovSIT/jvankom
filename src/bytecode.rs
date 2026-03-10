@@ -258,7 +258,7 @@ macro_rules! initialise_class_and_rewind {
         const _CHECK_SIZE: () = assert!($size > 0);
 
         $frame.program_counter -= $size; // rewind
-        return JVM::initialise_class(
+        return $crate::jvm::JVM::initialise_class(
             $context.current_thread,
             $jvm_class,
             $context.class_loader,

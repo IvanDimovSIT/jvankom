@@ -66,6 +66,7 @@ pub fn store_character_array_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn store_object_array_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 1;
     let frame = context.current_thread.top_frame();
 
     let value = pop_reference(frame)?;
@@ -82,16 +83,16 @@ pub fn store_object_array_instruction(context: JvmContext) -> JvmResult<()> {
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
     } else {
-        throw_null_pointer_exception!(frame, context, 1);
+        throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
     };
 
     let obj_array = match context.heap.get(array_ref) {
         HeapObject::ObjectArray(object_array) => object_array,
-        _ => throw_array_store_exception!(frame, context, 1),
+        _ => throw_array_store_exception!(frame, context, INSTRUCTION_SIZE),
     };
 
     if index < 0 || index as usize >= obj_array.array.len() {
-        throw_array_index_out_of_bounds_exception!(frame, context, 1);
+        throw_array_index_out_of_bounds_exception!(frame, context, INSTRUCTION_SIZE);
     }
     let is_storage_valid = if let Some((expected_type, expected_dimension)) = expected_storage_type
     {
@@ -105,7 +106,7 @@ pub fn store_object_array_instruction(context: JvmContext) -> JvmResult<()> {
     };
 
     if !is_storage_valid {
-        throw_array_store_exception!(frame, context, 1);
+        throw_array_store_exception!(frame, context, INSTRUCTION_SIZE);
     }
 
     obj_array.array[index as usize] = value;

@@ -6,11 +6,10 @@ use crate::{
         method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_special},
     },
     class_cache::{CacheEntry, FieldAccessInfo, TypeInfo},
-    class_file::{ClassFile, FieldAccessFlags, MethodAccessFlags},
+    class_file::{ClassFile, MethodAccessFlags},
     class_loader::ClassLoader,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     initialise_class_and_rewind,
-    jvm::JVM,
     jvm_model::{
         DescriptorType, JvmClass, OBJECT_CLASS_NAME, ObjectArray, ObjectArrayType, StaticFieldInfo,
     },
@@ -32,11 +31,12 @@ const INT_ARR: u8 = 10;
 const LONG_ARR: u8 = 11;
 
 pub fn array_length_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 1;
     let frame = context.current_thread.top_frame();
     let array_ref = if let Some(array_ref) = pop_reference(frame)? {
         array_ref
     } else {
-        throw_null_pointer_exception!(frame, context, 1);
+        throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
     };
 
     let array = context.heap.get(array_ref);
@@ -59,12 +59,13 @@ pub fn array_length_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 2;
     let frame = context.current_thread.top_frame();
     let array_type_value = read_u8_from_bytecode(frame);
 
     let operand_value = pop_int(frame)?;
     if operand_value < 0 {
-        throw_negative_array_size_exception!(frame, context, 2);
+        throw_negative_array_size_exception!(frame, context, INSTRUCTION_SIZE);
     }
     let array_size = operand_value as usize;
 
@@ -89,6 +90,7 @@ pub fn new_array_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 3;
     let frame = context.current_thread.top_frame();
     let unvalidated_index = read_u16_from_bytecode(frame);
     let type_info = if let Some(info) = frame.class.state.borrow().cache.get_type(unvalidated_index)
@@ -103,7 +105,7 @@ pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
 
         let type_info = TypeInfo {
             object_or_array: object_array_type,
-            dimension: dimension,
+            dimension,
         };
 
         frame.class.state.borrow_mut().cache.register(
@@ -114,7 +116,7 @@ pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
         if let ObjectArrayType::Class(jvm_class) = &type_info.object_or_array
             && !jvm_class.state.borrow().is_initialised
         {
-            initialise_class_and_rewind!(frame, context, jvm_class, 3);
+            initialise_class_and_rewind!(frame, context, jvm_class, INSTRUCTION_SIZE);
         }
 
         type_info
@@ -124,7 +126,7 @@ pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
 
     let operand_value = pop_int(frame)?;
     if operand_value < 0 {
-        throw_negative_array_size_exception!(frame, context, 3);
+        throw_negative_array_size_exception!(frame, context, INSTRUCTION_SIZE);
     }
     let array_size = operand_value as usize;
 
@@ -146,6 +148,7 @@ pub fn new_object_array_instruction(context: JvmContext) -> JvmResult<()> {
 pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
     context: JvmContext,
 ) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 3;
     let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let current_class = frame.class.clone();
@@ -161,7 +164,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
             if let Some(params) = pop_params_for_special(&call_info.parameter_list, frame)? {
                 params
             } else {
-                throw_null_pointer_exception!(frame, context, 3);
+                throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
             }
         } else {
             pop_params(&call_info.parameter_list, frame)?
@@ -225,7 +228,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
         called_method.access_flags,
         frame,
         context,
-        3
+        INSTRUCTION_SIZE
     );
 
     // register method in cache
@@ -245,7 +248,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
     );
 
     if !loaded_class.state.borrow().is_initialised {
-        initialise_class_and_rewind!(frame, context, &loaded_class, 3);
+        initialise_class_and_rewind!(frame, context, &loaded_class, INSTRUCTION_SIZE);
     }
 
     // call resolved method
@@ -253,7 +256,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
         if let Some(params) = pop_params_for_special(&param_types, frame)? {
             params
         } else {
-            throw_null_pointer_exception!(frame, context, 3);
+            throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
         }
     } else {
         pop_params(&param_types, frame)?
@@ -286,6 +289,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
 }
 
 pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 3;
     let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let new_object_class = if let Some(new_object_class) = frame
@@ -319,7 +323,7 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
         );
 
         if !loaded_class.state.borrow().is_initialised {
-            initialise_class_and_rewind!(frame, context, &loaded_class, 3);
+            initialise_class_and_rewind!(frame, context, &loaded_class, INSTRUCTION_SIZE);
         }
 
         loaded_class
@@ -346,6 +350,7 @@ pub fn new_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 3;
     let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let current_class = frame.class.clone();
@@ -363,7 +368,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
                 params,
             )
         } else {
-            throw_null_pointer_exception!(frame, context, 3);
+            throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
         }
     } else {
         drop(current_class_state_ref);
@@ -385,13 +390,13 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
         );
 
         if !called_class.state.borrow().is_initialised {
-            initialise_class_and_rewind!(frame, context, &called_class, 3);
+            initialise_class_and_rewind!(frame, context, &called_class, INSTRUCTION_SIZE);
         }
 
         let params = if let Some(params) = pop_params_for_special(&param_types, frame)? {
             params
         } else {
-            throw_null_pointer_exception!(frame, context, 3);
+            throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
         };
 
         (method_name, method_descriptor, params)
@@ -437,7 +442,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
         called_method.access_flags,
         frame,
         context,
-        3
+        INSTRUCTION_SIZE
     );
 
     if let Some(bytecode_index) = v_table_entry.bytecode_index {
@@ -471,6 +476,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 3;
     let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let field_index = if let AccessObjectFieldResult::HasAccess {
@@ -480,12 +486,12 @@ pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
     {
         field_index
     } else {
-        throw_illegal_access_error!(frame, context, 3);
+        throw_illegal_access_error!(frame, context, INSTRUCTION_SIZE);
     };
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
-        throw_null_pointer_exception!(frame, context, 3);
+        throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
     };
     let object_fields = match context.heap.get(object_ref) {
         HeapObject::Object { class: _, fields } => fields,
@@ -499,6 +505,7 @@ pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn put_field_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 3;
     let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let (field_index, field_descriptor) = if let AccessObjectFieldResult::HasAccess {
@@ -509,13 +516,13 @@ pub fn put_field_instruction(context: JvmContext) -> JvmResult<()> {
     {
         (field_index, field_descriptor)
     } else {
-        throw_illegal_access_error!(frame, context, 3);
+        throw_illegal_access_error!(frame, context, INSTRUCTION_SIZE);
     };
     let value = pop_any(frame)?;
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
-        throw_null_pointer_exception!(frame, context, 3);
+        throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
     };
     let (_object_class, object_fields) = match context.heap.get(object_ref) {
         HeapObject::Object { class, fields } => (class, fields),
@@ -551,11 +558,12 @@ pub fn put_static_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 1;
     let frame = context.current_thread.top_frame();
     let exception_ref = if let Some(ex_ref) = pop_reference(frame)? {
         ex_ref
     } else {
-        throw_null_pointer_exception!(frame, context, 1);
+        throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
     };
     let exception_obj = context.heap.get(exception_ref);
     let exception_class = match exception_obj {
@@ -573,6 +581,7 @@ pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 3;
     let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let type_info = if let Some(type_info) = frame
@@ -603,7 +612,7 @@ pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
         if let ObjectArrayType::Class(jvm_class) = &type_info.object_or_array
             && !jvm_class.state.borrow().is_initialised
         {
-            initialise_class_and_rewind!(frame, context, jvm_class, 3);
+            initialise_class_and_rewind!(frame, context, jvm_class, INSTRUCTION_SIZE);
         }
 
         type_info
@@ -623,6 +632,7 @@ pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 5;
     let frame = context.current_thread.top_frame();
     let (index, _count) = read_invokeinterface_params(frame)?;
     let current_class = frame.class.clone();
@@ -637,7 +647,7 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
                     params,
                 )
             } else {
-                throw_null_pointer_exception!(frame, context, 3);
+                throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
             }
         } else {
             drop(current_class_state);
@@ -646,7 +656,7 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
 
             let interface = context.class_loader.get(interface_name)?;
             if !interface.state.borrow().is_initialised {
-                initialise_class_and_rewind!(frame, context, &interface, 5);
+                initialise_class_and_rewind!(frame, context, &interface, INSTRUCTION_SIZE);
             }
 
             let param_types = parse_descriptor(method_desc)?;
@@ -664,7 +674,7 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
             let params = if let Some(params) = pop_params_for_special(&param_types, frame)? {
                 params
             } else {
-                throw_null_pointer_exception!(frame, context, 5);
+                throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
             };
 
             (interface, method_name, method_desc, params)
@@ -716,7 +726,7 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
         called_method.access_flags,
         frame,
         context,
-        5
+        INSTRUCTION_SIZE
     );
 
     if let Some(bytecode_index) = v_table_entry.bytecode_index {
