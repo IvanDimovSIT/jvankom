@@ -693,7 +693,7 @@ mod tests {
     #[test]
     fn test_parse_ok() {
         let class = parse(TEST_CLASS_FILE_PATH).unwrap().0;
-        assert_eq!("Test", class.get_class_name().unwrap());
+        assert_eq!("Test", class.get_class_name());
         assert_eq!(OBJECT_CLASS_NAME, class.get_super_class_name().unwrap());
         assert_eq!(1, class.fields.len());
         assert_eq!(65, class.version.major);

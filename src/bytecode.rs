@@ -17,6 +17,7 @@ use math_instructions::*;
 use references_instructions::*;
 use store_instructions::*;
 
+mod access_check;
 mod comparisons_instructions;
 mod constants_instructions;
 mod control_instructions;
@@ -261,7 +262,7 @@ macro_rules! initialise_class_and_rewind {
             $context.current_thread,
             $jvm_class,
             $context.class_loader,
-            $jvm_class.class_file.get_class_name().unwrap(),
+            $jvm_class.class_file.get_class_name(),
         );
     }};
 }

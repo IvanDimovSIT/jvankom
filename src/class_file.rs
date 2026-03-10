@@ -378,8 +378,16 @@ pub struct ClassFile {
     pub attributes: Vec<Attribute>,
 }
 impl ClassFile {
-    pub fn get_class_name(&self) -> Option<&str> {
-        self.constant_pool.get_class_name(self.class_index)
+    pub fn get_class_name(&self) -> &str {
+        self.constant_pool
+            .get_class_name(self.class_index)
+            .expect("Class name not set")
+    }
+
+    pub fn get_package_name(&self) -> &str {
+        let name = self.get_class_name();
+        let package_end = name.rfind('/').unwrap_or(0);
+        &name[0..package_end]
     }
 
     pub fn get_super_class_name(&self) -> Option<&str> {

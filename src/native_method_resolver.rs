@@ -164,7 +164,7 @@ impl NativeMethodResolver {
             .expect("Expected method descriptor")
             .to_owned();
         let name_key = NativeMethodNameKey {
-            class_name: class.class_file.get_class_name().unwrap().to_owned(),
+            class_name: class.class_file.get_class_name().to_owned(),
             method_name,
             descriptor,
         };

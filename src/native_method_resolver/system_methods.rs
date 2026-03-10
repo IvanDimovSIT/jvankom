@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use crate::{
     bytecode::{expect_int, expect_reference},
     class_loader::ClassLoader,
@@ -15,6 +17,18 @@ pub fn register_natives(
     Ok(())
 }
 
+enum TempArrayCopy {
+    Int(Vec<i32>),
+    Byte(Vec<i8>),
+    Boolean(Vec<bool>),
+    Character(Vec<u16>),
+    Short(Vec<i16>),
+    Float(Vec<f32>),
+    Double(Vec<f64>),
+    Long(Vec<i64>),
+    Object(Vec<Option<NonZeroUsize>>),
+}
+
 pub fn array_copy(
     thread: &mut JvmThread,
     heap: &mut JvmHeap,
@@ -27,56 +41,63 @@ pub fn array_copy(
     let dst_pos = expect_int(params[3])?;
     let length = expect_int(params[4])?;
 
-    let source = if let Some(r) = src_ref {
-        heap.get(r).clone()
+    let src_r = if let Some(r) = src_ref {
+        r
     } else {
         return throw_jvm_exception(thread, heap, class_loader, NULL_POINTER_EXCEPTION_NAME);
     };
-    let destination = if let Some(r) = dst_ref {
-        heap.get(r)
+    let dst_r = if let Some(d) = dst_ref {
+        d
     } else {
         return throw_jvm_exception(thread, heap, class_loader, NULL_POINTER_EXCEPTION_NAME);
     };
 
-    match (&source, destination) {
-        (HeapObject::IntArray(items_s), HeapObject::IntArray(items_d)) => {
-            copy_arr(items_s, src_pos, items_d, dst_pos, length)
+    let src_pos = src_pos as usize;
+    let end = src_pos + length as usize;
+    let slice = match heap.get(src_r) {
+        HeapObject::IntArray(a) => TempArrayCopy::Int(a[src_pos..end].to_vec()),
+        HeapObject::ByteArray(a) => TempArrayCopy::Byte(a[src_pos..end].to_vec()),
+        HeapObject::BooleanArray(a) => TempArrayCopy::Boolean(a[src_pos..end].to_vec()),
+        HeapObject::CharacterArray(a) => TempArrayCopy::Character(a[src_pos..end].to_vec()),
+        HeapObject::ShortArray(a) => TempArrayCopy::Short(a[src_pos..end].to_vec()),
+        HeapObject::FloatArray(a) => TempArrayCopy::Float(a[src_pos..end].to_vec()),
+        HeapObject::DoubleArray(a) => TempArrayCopy::Double(a[src_pos..end].to_vec()),
+        HeapObject::LongArray(a) => TempArrayCopy::Long(a[src_pos..end].to_vec()),
+        HeapObject::ObjectArray(a) => TempArrayCopy::Object(a.array[src_pos..end].to_vec()),
+        _ => todo!("Throw exception"),
+    };
+
+    let dst_pos = dst_pos as usize;
+    match (slice, heap.get(dst_r)) {
+        (TempArrayCopy::Int(src), HeapObject::IntArray(dst)) => {
+            dst[dst_pos..dst_pos + src.len()].copy_from_slice(&src)
         }
-        (HeapObject::ByteArray(items_s), HeapObject::ByteArray(items_d)) => {
-            copy_arr(items_s, src_pos, items_d, dst_pos, length)
+        (TempArrayCopy::Byte(src), HeapObject::ByteArray(dst)) => {
+            dst[dst_pos..dst_pos + src.len()].copy_from_slice(&src)
         }
-        (HeapObject::BooleanArray(items_s), HeapObject::BooleanArray(items_d)) => {
-            copy_arr(items_s, src_pos, items_d, dst_pos, length)
+        (TempArrayCopy::Boolean(src), HeapObject::BooleanArray(dst)) => {
+            dst[dst_pos..dst_pos + src.len()].copy_from_slice(&src)
         }
-        (HeapObject::CharacterArray(items_s), HeapObject::CharacterArray(items_d)) => {
-            copy_arr(items_s, src_pos, items_d, dst_pos, length)
+        (TempArrayCopy::Character(src), HeapObject::CharacterArray(dst)) => {
+            dst[dst_pos..dst_pos + src.len()].copy_from_slice(&src)
         }
-        (HeapObject::ShortArray(items_s), HeapObject::ShortArray(items_d)) => {
-            copy_arr(items_s, src_pos, items_d, dst_pos, length)
+        (TempArrayCopy::Short(src), HeapObject::ShortArray(dst)) => {
+            dst[dst_pos..dst_pos + src.len()].copy_from_slice(&src)
         }
-        (HeapObject::FloatArray(items_s), HeapObject::FloatArray(items_d)) => {
-            copy_arr(items_s, src_pos, items_d, dst_pos, length)
+        (TempArrayCopy::Float(src), HeapObject::FloatArray(dst)) => {
+            dst[dst_pos..dst_pos + src.len()].copy_from_slice(&src)
         }
-        (HeapObject::DoubleArray(items_s), HeapObject::DoubleArray(items_d)) => {
-            copy_arr(items_s, src_pos, items_d, dst_pos, length)
+        (TempArrayCopy::Double(src), HeapObject::DoubleArray(dst)) => {
+            dst[dst_pos..dst_pos + src.len()].copy_from_slice(&src)
         }
-        (HeapObject::LongArray(items_s), HeapObject::LongArray(items_d)) => {
-            copy_arr(items_s, src_pos, items_d, dst_pos, length)
+        (TempArrayCopy::Long(src), HeapObject::LongArray(dst)) => {
+            dst[dst_pos..dst_pos + src.len()].copy_from_slice(&src)
         }
-        (HeapObject::ObjectArray(items_s), HeapObject::ObjectArray(items_d)) => {
-            copy_arr(&items_s.array, src_pos, &mut items_d.array, dst_pos, length)
+        (TempArrayCopy::Object(src), HeapObject::ObjectArray(dst)) => {
+            dst.array[dst_pos..dst_pos + src.len()].clone_from_slice(&src)
         }
         _ => todo!("Throw exception"),
     }
 
     Ok(())
-}
-
-fn copy_arr<T: Copy>(src: &[T], s_start: i32, dst: &mut [T], d_start: i32, length: i32) {
-    let src = &src[(s_start as usize)..((s_start + length) as usize)];
-    let dst = &mut dst[(d_start as usize)..((d_start + length) as usize)];
-
-    for (s, d) in src.iter().zip(dst) {
-        *d = *s;
-    }
 }

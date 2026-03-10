@@ -882,7 +882,7 @@ mod tests {
         let loaded_classes: Vec<_> = jvm
             .class_loader
             .get_all_loaded_classes()
-            .map(|c| c.class_file.get_class_name().unwrap())
+            .map(|c| c.class_file.get_class_name())
             .collect();
 
         let expected_loaded_classes = [
@@ -925,7 +925,7 @@ mod tests {
         let loaded_classes: Vec<_> = jvm
             .class_loader
             .get_all_loaded_classes()
-            .map(|c| c.class_file.get_class_name().unwrap())
+            .map(|c| c.class_file.get_class_name())
             .collect();
 
         let expected_loaded_classes = [
@@ -962,7 +962,7 @@ mod tests {
         let loaded_classes: Vec<_> = jvm
             .class_loader
             .get_all_loaded_classes()
-            .map(|c| c.class_file.get_class_name().unwrap())
+            .map(|c| c.class_file.get_class_name())
             .collect();
 
         assert_eq!(9, jvm.class_loader.get_loaded_count());
@@ -1601,8 +1601,7 @@ mod tests {
                     .interfaces
                     .iter()
                     .filter(|int| {
-                        interface.class_file.get_class_name().unwrap()
-                            == int.class_file.get_class_name().unwrap()
+                        interface.class_file.get_class_name() == int.class_file.get_class_name()
                     })
                     .count();
                 assert_eq!(1, count)

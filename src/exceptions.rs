@@ -93,7 +93,7 @@ macro_rules! throw_arithmetic_exception {
     }};
 }
 
-///  throws a ArithmeticException, $size is the size of the instruction
+///  throws an IllegalAccessError, $size is the size of the instruction
 #[macro_export]
 macro_rules! throw_illegal_access_error {
     ($frame:expr, $context:expr, $size:expr) => {{
@@ -168,11 +168,7 @@ pub fn handle_exception(
         thread.pop();
         Err(JvmError::UnhandledException {
             reference,
-            class_name: exception_class
-                .class_file
-                .get_class_name()
-                .unwrap()
-                .to_owned(),
+            class_name: exception_class.class_file.get_class_name().to_owned(),
             fields: ex_fields.clone(),
         }
         .bx())
@@ -241,11 +237,7 @@ fn call_exception_constructor(
         index
     } else {
         return Err(JvmError::MethodNotFound {
-            class_name: exception_class
-                .class_file
-                .get_class_name()
-                .expect("expected class name")
-                .to_owned(),
+            class_name: exception_class.class_file.get_class_name().to_owned(),
             method_name: EXCEPTION_CONSTRUCTOR_NAME.to_owned(),
         }
         .bx());

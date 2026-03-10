@@ -206,7 +206,7 @@ mod tests {
         let loaded_class = class_loader.get("Test").unwrap();
         assert!(!loaded_class.state.borrow().is_initialised);
         assert_eq!(1, class_loader.get_loaded_count());
-        assert_eq!("Test", loaded_class.class_file.get_class_name().unwrap());
+        assert_eq!("Test", loaded_class.class_file.get_class_name());
     }
 
     #[test]
@@ -219,10 +219,7 @@ mod tests {
         let loaded_class = class_loader.get("CrossCall2Test").unwrap();
         assert!(!loaded_class.state.borrow().is_initialised);
         assert_eq!(1, class_loader.get_loaded_count());
-        assert_eq!(
-            "CrossCall2Test",
-            loaded_class.class_file.get_class_name().unwrap()
-        );
+        assert_eq!("CrossCall2Test", loaded_class.class_file.get_class_name());
     }
 
     #[test]
@@ -268,10 +265,7 @@ mod tests {
         let loaded_class = class_loader.get(OBJECT_CLASS_NAME).unwrap();
         assert!(!loaded_class.state.borrow().is_initialised);
         assert_eq!(1, class_loader.get_loaded_count());
-        assert_eq!(
-            OBJECT_CLASS_NAME,
-            loaded_class.class_file.get_class_name().unwrap()
-        );
+        assert_eq!(OBJECT_CLASS_NAME, loaded_class.class_file.get_class_name());
     }
 
     #[test]
@@ -282,9 +276,6 @@ mod tests {
         let loaded_class = class_loader.get("java/lang/String").unwrap();
         assert!(!loaded_class.state.borrow().is_initialised);
         assert_eq!(1, class_loader.get_loaded_count());
-        assert_eq!(
-            "java/lang/String",
-            loaded_class.class_file.get_class_name().unwrap()
-        );
+        assert_eq!("java/lang/String", loaded_class.class_file.get_class_name());
     }
 }

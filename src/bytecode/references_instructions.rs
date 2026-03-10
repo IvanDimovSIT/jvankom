@@ -1,7 +1,10 @@
 use std::rc::Rc;
 
 use crate::{
-    bytecode::method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_special},
+    bytecode::{
+        access_check::check_has_access,
+        method_descriptor_parser::{parse_descriptor, pop_params, pop_params_for_special},
+    },
     class_cache::{CacheEntry, FieldAccessInfo, TypeInfo},
     class_file::{ClassFile, FieldAccessFlags, MethodAccessFlags},
     class_loader::ClassLoader,
@@ -14,6 +17,7 @@ use crate::{
     method_call_cache::{InterfaceMethodCallInfo, StaticMethodCallInfo, VirtualMethodCallInfo},
     throw_illegal_access_error, throw_negative_array_size_exception, throw_null_pointer_exception,
     v_table::VTableEntry,
+    validate_access,
 };
 
 use super::*;
@@ -215,13 +219,14 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
     {
         todo!("Throw IncopatibleClassChangeError")
     }
-    if called_method
-        .access_flags
-        .check_flag(MethodAccessFlags::PRIVATE_FLAG)
-        && Rc::as_ptr(&loaded_class) != Rc::as_ptr(&frame.class)
-    {
-        throw_illegal_access_error!(frame, context, 3);
-    }
+    validate_access!(
+        frame.class,
+        loaded_class,
+        called_method.access_flags,
+        frame,
+        context,
+        3
+    );
 
     // register method in cache
     let param_types = parse_descriptor(method_descriptor)?;
@@ -426,13 +431,14 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
     {
         todo!("Throw IncopatibleClassChangeError")
     }
-    if called_method
-        .access_flags
-        .check_flag(MethodAccessFlags::PRIVATE_FLAG)
-        && Rc::as_ptr(&v_table_entry.resolved_class) != Rc::as_ptr(&frame.class)
-    {
-        throw_illegal_access_error!(frame, context, 3);
-    }
+    validate_access!(
+        frame.class,
+        v_table_entry.resolved_class,
+        called_method.access_flags,
+        frame,
+        context,
+        3
+    );
 
     if let Some(bytecode_index) = v_table_entry.bytecode_index {
         let new_frame = JvmStackFrame::new(
@@ -467,7 +473,15 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
 pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
-    let (field_index, _) = access_object_field(unvalidated_cp_index, frame, context.class_loader)?;
+    let field_index = if let AccessObjectFieldResult::HasAccess {
+        field_index,
+        field_descriptor: _,
+    } = access_object_field(unvalidated_cp_index, frame, context.class_loader)?
+    {
+        field_index
+    } else {
+        throw_illegal_access_error!(frame, context, 3);
+    };
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
     } else {
@@ -487,8 +501,16 @@ pub fn get_field_instruction(context: JvmContext) -> JvmResult<()> {
 pub fn put_field_instruction(context: JvmContext) -> JvmResult<()> {
     let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
-    let (field_index, field_descriptor) =
-        access_object_field(unvalidated_cp_index, frame, context.class_loader)?;
+    let (field_index, field_descriptor) = if let AccessObjectFieldResult::HasAccess {
+        field_index,
+        field_descriptor,
+    } =
+        access_object_field(unvalidated_cp_index, frame, context.class_loader)?
+    {
+        (field_index, field_descriptor)
+    } else {
+        throw_illegal_access_error!(frame, context, 3);
+    };
     let value = pop_any(frame)?;
     let object_ref = if let Some(reference) = pop_reference(frame)? {
         reference
@@ -688,13 +710,14 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
     {
         todo!("Throw IncopatibleClassChangeError")
     }
-    if called_method
-        .access_flags
-        .check_flag(MethodAccessFlags::PRIVATE_FLAG)
-        && Rc::as_ptr(&v_table_entry.resolved_class) != Rc::as_ptr(&frame.class)
-    {
-        throw_illegal_access_error!(frame, context, 5);
-    }
+    validate_access!(
+        frame.class,
+        v_table_entry.resolved_class,
+        called_method.access_flags,
+        frame,
+        context,
+        5
+    );
 
     if let Some(bytecode_index) = v_table_entry.bytecode_index {
         let new_frame = JvmStackFrame::new(
@@ -959,13 +982,14 @@ where
         .expect("Static fields not initialised");
 
     let class_file_index = fields[index].field_class_file_index;
-    if class.class_file.fields[class_file_index]
-        .access_flags
-        .check_flag(FieldAccessFlags::PRIVATE_FLAG)
-        && Rc::as_ptr(&current_class) != Rc::as_ptr(&class)
-    {
-        todo!("Throw access exception and rewind by 2")
-    }
+    validate_access!(
+        current_class,
+        class,
+        class.class_file.fields[class_file_index].access_flags,
+        frame,
+        context,
+        3
+    );
 
     field_fn(&mut fields[index], frame)?;
     drop(state);
@@ -1003,21 +1027,25 @@ fn find_static_field_class_with_index(
     }
 
     Err(JvmError::StaticFieldNotFound {
-        class_name: class
-            .class_file
-            .get_class_name()
-            .unwrap_or_default()
-            .to_owned(),
+        class_name: class.class_file.get_class_name().to_owned(),
         field_name: name.to_owned(),
     }
     .bx())
+}
+
+enum AccessObjectFieldResult {
+    HasAccess {
+        field_index: usize,
+        field_descriptor: DescriptorType,
+    },
+    NoAccess,
 }
 
 fn access_object_field(
     unvalidated_cp_index: u16,
     frame: &mut JvmStackFrame,
     class_loader: &mut ClassLoader,
-) -> JvmResult<(usize, DescriptorType)> {
+) -> JvmResult<AccessObjectFieldResult> {
     let current_class = frame.class.clone();
 
     // check cache
@@ -1030,7 +1058,10 @@ fn access_object_field(
         let field_descriptor =
             get_non_static_field_descriptor(&info.target_class, info.field_index);
 
-        return Ok((info.field_index, field_descriptor));
+        return Ok(AccessObjectFieldResult::HasAccess {
+            field_index: info.field_index,
+            field_descriptor,
+        });
     }
 
     // cache miss
@@ -1063,12 +1094,13 @@ fn access_object_field(
         .expect("Missing non static fields")[field_index]
         .class
         .clone();
-    if field_class.class_file.fields[declared_class_file_field_index]
-        .access_flags
-        .check_flag(FieldAccessFlags::PRIVATE_FLAG)
-        && Rc::as_ptr(&declared_class) != Rc::as_ptr(&current_class)
-    {
-        todo!("Throw access error and rewind pc by 2")
+    let has_access = check_has_access(
+        &current_class,
+        &declared_class,
+        field_class.class_file.fields[declared_class_file_field_index].access_flags,
+    );
+    if !has_access {
+        return Ok(AccessObjectFieldResult::NoAccess);
     }
     let field_descriptor = get_non_static_field_descriptor(&declared_class, field_index);
 
@@ -1081,7 +1113,10 @@ fn access_object_field(
         Rc::new(CacheEntry::NonStaticFieldAccess(field_access_info)),
     );
 
-    Ok((field_index, field_descriptor))
+    Ok(AccessObjectFieldResult::HasAccess {
+        field_index,
+        field_descriptor,
+    })
 }
 
 #[inline]
@@ -1121,11 +1156,7 @@ fn find_field_index(declared_class: &Rc<JvmClass>, field_name: &str) -> JvmResul
     }
 
     Err(JvmError::FieldNotFound {
-        class_name: declared_class
-            .class_file
-            .get_class_name()
-            .unwrap_or_default()
-            .to_owned(),
+        class_name: declared_class.class_file.get_class_name().to_owned(),
         field_name: field_name.to_owned(),
     }
     .bx())

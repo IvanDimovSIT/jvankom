@@ -24,10 +24,7 @@ impl StringPool {
         jvm_heap: &mut JvmHeap,
     ) {
         if let HeapObject::Object { class, fields } = string_obj {
-            debug_assert_eq!(
-                STRING_CLASS_NAME,
-                class.class_file.get_class_name().unwrap()
-            );
+            debug_assert_eq!(STRING_CLASS_NAME, class.class_file.get_class_name());
             let arr = HeapObject::CharacterArray(Self::string_to_arr(string));
             let arr_ref = jvm_heap.allocate(arr);
 

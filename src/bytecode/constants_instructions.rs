@@ -139,13 +139,7 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 fn create_string_object(string_class: &Rc<JvmClass>) -> JvmResult<HeapObject> {
-    debug_assert_eq!(
-        STRING_CLASS_NAME,
-        string_class
-            .class_file
-            .get_class_name()
-            .expect("String class not initialised")
-    );
+    debug_assert_eq!(STRING_CLASS_NAME, string_class.class_file.get_class_name());
 
     if let Some(str) = string_class.state.borrow().default_object.clone() {
         Ok(str)
@@ -161,13 +155,7 @@ fn create_string_object(string_class: &Rc<JvmClass>) -> JvmResult<HeapObject> {
 }
 
 fn create_class_object(class_class: &Rc<JvmClass>, _class_name: &str) -> JvmResult<HeapObject> {
-    debug_assert_eq!(
-        CLASS_CLASS_NAME,
-        class_class
-            .class_file
-            .get_class_name()
-            .expect("String class not initialised")
-    );
+    debug_assert_eq!(CLASS_CLASS_NAME, class_class.class_file.get_class_name());
 
     if let Some(cl) = class_class.state.borrow().default_object.clone() {
         Ok(cl)
