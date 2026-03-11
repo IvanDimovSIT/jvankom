@@ -105,3 +105,59 @@ fn parse_field_descriptor(descriptor: &str) -> DescriptorType {
         .expect("Field descriptor is empty")
         .into()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        class_loader::{ClassLoader, ClassSource},
+        jvm_model::{OBJECT_CLASS_NAME, STRING_CLASS_NAME},
+    };
+
+    use super::*;
+
+    #[test]
+    fn test_determine_static_fields_string() {
+        test_determine_static_fields_helper(
+            STRING_CLASS_NAME,
+            &[
+                ("serialVersionUID", DescriptorType::Long),
+                ("serialPersistentFields", DescriptorType::Reference),
+                ("CASE_INSENSITIVE_ORDER", DescriptorType::Reference),
+            ],
+        );
+    }
+
+    #[test]
+    fn test_determine_static_fields_object() {
+        test_determine_static_fields_helper(OBJECT_CLASS_NAME, &[]);
+    }
+
+    #[test]
+    fn test_determine_static_fields_math() {
+        test_determine_static_fields_helper(
+            "java/lang/Void",
+            &[("TYPE", DescriptorType::Reference)],
+        );
+    }
+
+    fn test_determine_static_fields_helper(
+        class_name: &str,
+        expected_fields: &[(&str, DescriptorType)],
+    ) {
+        let mut class_loader =
+            ClassLoader::new(vec![ClassSource::Jar("java_libraries/rt.jar".to_owned())]).unwrap();
+
+        let class = class_loader.get(class_name).unwrap();
+
+        let fields = determine_static_fields(&class.class_file);
+
+        assert_eq!(expected_fields.len(), fields.len());
+        for (name, desc) in expected_fields {
+            let present = fields
+                .iter()
+                .find(|field| field.name == *name && field.descriptor_type == *desc)
+                .is_some();
+            assert!(present);
+        }
+    }
+}

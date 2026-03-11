@@ -14,14 +14,14 @@ use crate::{
     native_method_resolver::NativeMethodResolver,
 };
 
-pub struct JVM {
+pub struct Jvm {
     class_loader: ClassLoader,
     threads: Vec<JvmThread>,
     heap: JvmHeap,
     cache: JvmCache,
     native_method_resolver: NativeMethodResolver,
 }
-impl JVM {
+impl Jvm {
     pub fn new(class_loader: ClassLoader, heap: JvmHeap) -> Self {
         Self {
             class_loader,
@@ -212,12 +212,8 @@ impl JVM {
                             return Err(JvmError::MissingReturnValue.bx());
                         };
 
-                        if current_thread.has_frames() {
-                            current_thread
-                                .peek()
-                                .unwrap()
-                                .operand_stack
-                                .push(return_value);
+                        if let Some(top_frame) = current_thread.peek() {
+                            top_frame.operand_stack.push(return_value);
                         } else {
                             return Ok(Some(return_value));
                         }
@@ -1479,7 +1475,7 @@ mod tests {
         ];
         let class_loader = ClassLoader::new(contexts).unwrap();
         let heap = JvmHeap::new(2, min_allocations);
-        let mut jvm = JVM::new(class_loader, heap);
+        let mut jvm = Jvm::new(class_loader, heap);
         let method = if is_secondary_call {
             "secondary"
         } else {
@@ -1585,11 +1581,11 @@ mod tests {
         assert_eq!(1, jvm.class_loader.get_total_cache_hits());
     }
 
-    fn create_jvm(mut contexts: Vec<ClassSource>) -> JVM {
+    fn create_jvm(mut contexts: Vec<ClassSource>) -> Jvm {
         contexts.push(ClassSource::Jar("java_libraries/rt.jar".to_owned()));
         let class_loader = ClassLoader::new(contexts).unwrap();
         let heap = JvmHeap::new(2, 100);
-        JVM::new(class_loader, heap)
+        Jvm::new(class_loader, heap)
     }
 
     fn assert_interfaces_not_duplicated<'a>(classes: impl Iterator<Item = &'a Rc<JvmClass>>) {

@@ -1,6 +1,6 @@
 use crate::{
     class_loader::{ClassLoader, ClassSource},
-    jvm::JVM,
+    jvm::Jvm,
     jvm_heap::JvmHeap,
     jvm_model::JvmValue,
 };
@@ -33,7 +33,7 @@ fn main() {
     ])
     .unwrap();
     let heap = JvmHeap::new(1000, 1000);
-    let mut jvm = JVM::new(class_loader, heap);
+    let mut jvm = Jvm::new(class_loader, heap);
     let result = jvm.run(
         "TestString".to_owned(),
         "testSB".to_owned(), // "testSB".to_owned(),
@@ -70,7 +70,7 @@ fn main() {
     show_cache_storage(&jvm);
 }
 
-fn show_cache_storage(jvm: &JVM) {
+fn show_cache_storage(jvm: &Jvm) {
     let (used, total) = jvm.get_cache_storage_efficieny();
     println!(
         "Storage efficiency: {}/{}, {}%",

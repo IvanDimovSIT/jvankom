@@ -3,7 +3,7 @@ use std::{num::NonZeroUsize, rc::Rc};
 use crate::{
     class_loader::ClassLoader,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
-    jvm::JVM,
+    jvm::Jvm,
     jvm_heap::JvmHeap,
     jvm_model::{
         FrameReturn, HeapObject, JvmClass, JvmError, JvmResult, JvmStackFrame, JvmThread, JvmValue,
@@ -195,7 +195,7 @@ pub fn throw_jvm_exception(
     let throwing_frame_index = constructor_frame_index - 1;
     let exception_class = class_loader.get(exception_type)?;
     if !exception_class.state.borrow().is_initialised {
-        JVM::initialise_class(thread, &exception_class, class_loader, exception_type)?;
+        Jvm::initialise_class(thread, &exception_class, class_loader, exception_type)?;
     }
     if exception_class.state.borrow().non_static_fields.is_none() {
         let fields = determine_non_static_field_types(&exception_class)?;

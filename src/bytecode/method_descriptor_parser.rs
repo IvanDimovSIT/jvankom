@@ -104,3 +104,62 @@ pub fn pop_params(types: &[DescriptorType], frame: &mut JvmStackFrame) -> JvmRes
 
     Ok(params)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_descriptor_void_input() {
+        let method_descriptor = "()I";
+        let params = parse_descriptor(method_descriptor).unwrap();
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_parse_descriptor_primitive_input() {
+        let method_descriptor = "(IJZBFDC)I";
+        let params = parse_descriptor(method_descriptor).unwrap();
+        assert_eq!(
+            vec![
+                DescriptorType::Character,
+                DescriptorType::Double,
+                DescriptorType::Float,
+                DescriptorType::Byte,
+                DescriptorType::Boolean,
+                DescriptorType::Long,
+                DescriptorType::Integer,
+            ],
+            params
+        );
+    }
+
+    #[test]
+    fn test_parse_descriptor_array_input() {
+        let method_descriptor = "([I[[J[Ljava/lang/String;)I";
+        let params = parse_descriptor(method_descriptor).unwrap();
+        assert_eq!(
+            vec![
+                DescriptorType::Reference,
+                DescriptorType::Reference,
+                DescriptorType::Reference,
+            ],
+            params
+        );
+    }
+
+    #[test]
+    fn test_parse_descriptor_class_input() {
+        let method_descriptor = "(ILjava/lang/String;Ljava/lang/Object;LL;)I";
+        let params = parse_descriptor(method_descriptor).unwrap();
+        assert_eq!(
+            vec![
+                DescriptorType::Reference,
+                DescriptorType::Reference,
+                DescriptorType::Reference,
+                DescriptorType::Integer,
+            ],
+            params
+        );
+    }
+}

@@ -539,6 +539,37 @@ impl JvmClass {
         })
     }
 
+    /// returns the class, method name and method descriptor based on method ref index,
+    /// 'class' is the class holding the CP value
+    pub fn read_method_ref(&self, method_ref: NonZeroUsize) -> JvmResult<(&str, &str, &str)> {
+        if let Some(called_method) = self
+            .class_file
+            .constant_pool
+            .get_class_methodname_descriptor(method_ref)
+        {
+            Ok(called_method)
+        } else {
+            Err(JvmError::InvalidMethodRefIndex(method_ref).bx())
+        }
+    }
+
+    /// returns the class, method name and method descriptor based on interface method ref index,
+    /// 'class' is the class holding the CP value
+    pub fn read_interface_method_ref(
+        &self,
+        interface_method_ref: NonZeroUsize,
+    ) -> JvmResult<(&str, &str, &str)> {
+        if let Some(interface_info) = self
+            .class_file
+            .constant_pool
+            .get_interface_method(interface_method_ref)
+        {
+            Ok(interface_info)
+        } else {
+            Err(JvmError::InvalidInterfaceMethodRefIndex(interface_method_ref).bx())
+        }
+    }
+
     pub fn is_sublcass_of(parent: &Rc<JvmClass>, child: &Rc<JvmClass>) -> bool {
         if Rc::as_ptr(parent) == Rc::as_ptr(child) {
             return true;

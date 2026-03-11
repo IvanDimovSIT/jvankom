@@ -1,10 +1,12 @@
 use std::num::NonZeroUsize;
 
 use crate::{
-    bytecode::stack_instructions::{dup_instruction, dup_x1_instruction, pop_instruction},
-    jvm_model::{
-        HeapObject, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmType, JvmValue,
+    bytecode::{
+        references_instructions::field_instructions::*,
+        references_instructions::method_instructions::*,
+        stack_instructions::{dup_instruction, dup_x1_instruction, pop_instruction},
     },
+    jvm_model::{HeapObject, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmType, JvmValue},
 };
 
 use comparisons_instructions::*;
@@ -258,7 +260,7 @@ macro_rules! initialise_class_and_rewind {
         const _CHECK_SIZE: () = assert!($size > 0);
 
         $frame.program_counter -= $size; // rewind
-        return $crate::jvm::JVM::initialise_class(
+        return $crate::jvm::Jvm::initialise_class(
             $context.current_thread,
             $jvm_class,
             $context.class_loader,
@@ -272,37 +274,6 @@ fn validate_cp_index(unvalidated_cp_index: u16) -> JvmResult<NonZeroUsize> {
         Ok(index)
     } else {
         Err(JvmError::InvalidConstantPoolIndex.bx())
-    }
-}
-
-/// returns the class, method name and method descriptor based on method ref index,
-/// 'class' is the class holding the CP value
-fn read_method_ref(class: &JvmClass, method_ref: NonZeroUsize) -> JvmResult<(&str, &str, &str)> {
-    if let Some(called_method) = class
-        .class_file
-        .constant_pool
-        .get_class_methodname_descriptor(method_ref)
-    {
-        Ok(called_method)
-    } else {
-        Err(JvmError::InvalidMethodRefIndex(method_ref).bx())
-    }
-}
-
-/// returns the class, method name and method descriptor based on interface method ref index,
-/// 'class' is the class holding the CP value
-fn read_interface_method_ref(
-    class: &JvmClass,
-    interface_method_ref: NonZeroUsize,
-) -> JvmResult<(&str, &str, &str)> {
-    if let Some(interface_info) = class
-        .class_file
-        .constant_pool
-        .get_interface_method(interface_method_ref)
-    {
-        Ok(interface_info)
-    } else {
-        Err(JvmError::InvalidInterfaceMethodRefIndex(interface_method_ref).bx())
     }
 }
 
