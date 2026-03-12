@@ -154,14 +154,12 @@ impl NativeMethodResolver {
         let method_name = class
             .class_file
             .constant_pool
-            .get_utf8(class.class_file.methods[method_index].name_index)
-            .expect("Expected method name")
+            .expect_utf8(class.class_file.methods[method_index].name_index)
             .to_owned();
         let descriptor = class
             .class_file
             .constant_pool
-            .get_utf8(class.class_file.methods[method_index].descriptor_index)
-            .expect("Expected method descriptor")
+            .expect_utf8(class.class_file.methods[method_index].descriptor_index)
             .to_owned();
         let name_key = NativeMethodNameKey {
             class_name: class.class_file.get_class_name().to_owned(),

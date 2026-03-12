@@ -115,7 +115,7 @@ pub fn handle_exception(
     heap: &mut JvmHeap,
     class_loader: &mut ClassLoader,
 ) -> JvmResult<()> {
-    let frame = thread.peek().unwrap();
+    let frame = thread.top_frame();
     debug_assert_eq!(FrameReturn::Exception, frame.should_return);
     let reference = match frame.return_value.unwrap() {
         JvmValue::Reference(Some(r)) => r,
@@ -174,7 +174,7 @@ pub fn handle_exception(
         .bx())
     } else if thread.has_frames() {
         thread.pop();
-        let frame = thread.peek().unwrap();
+        let frame = thread.top_frame();
         frame.return_value = Some(JvmValue::Reference(Some(reference)));
         frame.should_return = FrameReturn::Exception;
         handle_exception(thread, heap, class_loader)

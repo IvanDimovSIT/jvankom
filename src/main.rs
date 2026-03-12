@@ -51,14 +51,12 @@ fn main() {
             .class
             .class_file
             .constant_pool
-            .get_utf8(method_index)
-            .unwrap();
+            .expect_utf8(method_index);
         let desc = frame
             .class
             .class_file
             .constant_pool
-            .get_utf8(descriptor_index)
-            .unwrap();
+            .expect_utf8(descriptor_index);
         println!("=>{method}{desc}");
 
         return;

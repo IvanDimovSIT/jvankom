@@ -103,7 +103,7 @@ where
     F: FnOnce(&mut StaticFieldInfo, &mut JvmStackFrame) -> JvmResult<()>,
 {
     const INSTRUCTION_SIZE: usize = 3;
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let unvalidated_cp_index = read_u16_from_bytecode(frame);
     let current_class = frame.class.clone();
 

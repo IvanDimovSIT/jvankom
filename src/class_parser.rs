@@ -701,13 +701,10 @@ mod tests {
         assert!(class.interfaces.is_empty());
 
         let field = &class.fields[0];
-        let field_name = class.constant_pool.get_utf8(field.name_index).unwrap();
+        let field_name = class.constant_pool.expect_utf8(field.name_index);
         assert_eq!("a", field_name);
 
-        let field_type = class
-            .constant_pool
-            .get_utf8(field.descriptor_index)
-            .unwrap();
+        let field_type = class.constant_pool.expect_utf8(field.descriptor_index);
         assert_eq!("I", field_type);
 
         assert!(
@@ -752,7 +749,7 @@ mod tests {
         assert_eq!(1, class.attributes.len());
         let sourcefile = match &class.attributes[0] {
             Attribute::SourceFile { sourcefile_index } => {
-                class.constant_pool.get_utf8(*sourcefile_index).unwrap()
+                class.constant_pool.expect_utf8(*sourcefile_index)
             }
             _ => panic!("expected source file attribute"),
         };
@@ -765,10 +762,10 @@ mod tests {
         expected_name: &str,
         expected_descriptor: &str,
     ) {
-        let name = const_pool.get_utf8(method.name_index).unwrap();
+        let name = const_pool.expect_utf8(method.name_index);
         assert_eq!(expected_name, name);
 
-        let descriptor = const_pool.get_utf8(method.descriptor_index).unwrap();
+        let descriptor = const_pool.expect_utf8(method.descriptor_index);
         assert_eq!(expected_descriptor, descriptor);
 
         let code: Vec<_> = method

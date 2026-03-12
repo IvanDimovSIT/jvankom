@@ -139,6 +139,10 @@ pub enum JvmError {
         method_name: String,
         method_descriptor: String,
     },
+    ExpectedNativeMethod {
+        method_name: String,
+        method_descriptor: String,
+    },
     ExpectedStaticMethod {
         method_name: String,
         method_descriptor: String,
@@ -236,6 +240,12 @@ impl Display for JvmError {
                 method_descriptor,
             } => {
                 format!("Expected method to not be native: {method_name}{method_descriptor}")
+            }
+            JvmError::ExpectedNativeMethod {
+                method_name,
+                method_descriptor,
+            } => {
+                format!("Expected method to be native: {method_name}{method_descriptor}")
             }
             JvmError::ExpectedStaticMethod {
                 method_name,
@@ -389,8 +399,7 @@ impl JvmStackFrame {
         let descriptor = class
             .class_file
             .constant_pool
-            .get_utf8(method.descriptor_index)
-            .expect("Expected descriptor value");
+            .expect_utf8(method.descriptor_index);
         let is_void = descriptor.ends_with('V');
 
         Self {
@@ -427,8 +436,7 @@ impl JvmStackFrame {
             .class
             .class_file
             .constant_pool
-            .get_utf8(self.class.class_file.methods[self.method_index].name_index)
-            .unwrap();
+            .expect_utf8(self.class.class_file.methods[self.method_index].name_index);
         let class_name = self.class.class_file.get_class_name();
 
         println!(

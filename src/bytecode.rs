@@ -238,7 +238,7 @@ impl BytecodeTable {
 }
 
 fn handle_unrecognised_instruction(context: JvmContext) -> JvmResult<()> {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let bytecode =
         frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
     assert!(frame.program_counter > 0);

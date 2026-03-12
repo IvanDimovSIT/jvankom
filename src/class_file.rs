@@ -239,6 +239,10 @@ impl ConstantPool {
         }
     }
 
+    pub fn expect_utf8(&self, index: NonZeroUsize) -> &str {
+        self.get_utf8(index).expect("Invalid index for UTF-8")
+    }
+
     /// returns the class name, method name and method descriptor
     pub fn get_interface_method(
         &self,

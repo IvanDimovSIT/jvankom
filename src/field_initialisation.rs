@@ -14,13 +14,9 @@ pub fn determine_static_fields(class_file: &ClassFile) -> Vec<StaticFieldInfo> {
 
         let name = class_file
             .constant_pool
-            .get_utf8(field.name_index)
-            .expect("Invalid name index: Fields should be verified")
+            .expect_utf8(field.name_index)
             .to_owned();
-        let descriptor = class_file
-            .constant_pool
-            .get_utf8(field.descriptor_index)
-            .expect("Invalid descriptor index: Fields should be verified");
+        let descriptor = class_file.constant_pool.expect_utf8(field.descriptor_index);
 
         let descriptor_type = parse_field_descriptor(descriptor);
         let value = descriptor_type.create_default_value();
@@ -62,14 +58,12 @@ pub fn determine_non_static_field_types(class: &Rc<JvmClass>) -> JvmResult<Vec<F
         let descriptor = class
             .class_file
             .constant_pool
-            .get_utf8(f.descriptor_index)
-            .expect("Invalid descriptor index");
+            .expect_utf8(f.descriptor_index);
 
         let field_name = class
             .class_file
             .constant_pool
-            .get_utf8(f.name_index)
-            .expect("Expected field name")
+            .expect_utf8(f.name_index)
             .to_owned();
 
         let field_info = FieldInfo {

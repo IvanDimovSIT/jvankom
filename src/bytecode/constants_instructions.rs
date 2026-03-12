@@ -84,8 +84,7 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
                 .class
                 .class_file
                 .constant_pool
-                .get_utf8(*name_index)
-                .expect("Should be validated");
+                .expect_utf8(*name_index);
 
             let obj = create_class_object(&class_class, class_name)?;
             let class_obj_ref = context.heap.allocate(obj);
@@ -105,8 +104,7 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
                 .class
                 .class_file
                 .constant_pool
-                .get_utf8(*utf8_index)
-                .expect("Should be validated");
+                .expect_utf8(*utf8_index);
 
             context
                 .cache

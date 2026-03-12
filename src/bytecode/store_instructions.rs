@@ -165,7 +165,7 @@ where
     P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
     W: FnOnce(T) -> JvmValue,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
     let index_value = read_u8_from_bytecode(frame) as usize;
     let generic_value = pop_generic(frame)?;
 
@@ -184,7 +184,7 @@ where
     P: FnOnce(&mut JvmStackFrame) -> JvmResult<T>,
     W: FnOnce(T) -> JvmValue,
 {
-    let frame = context.current_thread.peek().unwrap();
+    let frame = context.current_thread.top_frame();
 
     let value = pop_generic(frame)?;
     debug_assert!(INDEX < frame.local_variables.len());

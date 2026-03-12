@@ -540,7 +540,19 @@ fn invoke_method(
             .access_flags
             .check_flag(MethodAccessFlags::NATIVE_FLAG)
         {
-            todo!("should be native method")
+            return Err(JvmError::ExpectedNativeMethod {
+                method_name: class
+                    .class_file
+                    .constant_pool
+                    .expect_utf8(called_method.name_index)
+                    .to_owned(),
+                method_descriptor: class
+                    .class_file
+                    .constant_pool
+                    .expect_utf8(called_method.descriptor_index)
+                    .to_owned(),
+            }
+            .bx());
         }
 
         context.native_method_resolver.execute_native_method(

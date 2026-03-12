@@ -41,6 +41,13 @@ impl From<FieldAccessFlags> for AccessLevel {
 
 /// if current class doesn't have access to the target resource
 /// throws an IllegalAccessError ($size is the size of the instruction)
+/// # Parameters
+/// - `$current_class`: The JvmClass that is attempting to access the resource (caller class).
+/// - `$target_class`: The JvmClass that owns the resource being accessed (target class).
+/// - `$access_flags`: Flags indicating the access level required.
+/// - `$frame`: The current JVM frame where the access attempt occurs, used for throwing exceptions.
+/// - `$context`: Jvm runtime context needed for exception handling.
+/// - `$size`: The size of the instruction needed for the exception throwing.
 #[macro_export]
 macro_rules! validate_access {
     ($current_class:expr, $target_class:expr, $access_flags:expr, $frame:expr, $context:expr, $size:expr) => {{

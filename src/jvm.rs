@@ -203,6 +203,7 @@ impl Jvm {
                 if frame.should_return == FrameReturn::NotReturning {
                 } else if frame.should_return == FrameReturn::Returning {
                     if frame.is_void {
+                        debug_assert!(frame.return_value.is_none());
                         current_thread.pop();
                     } else {
                         let old_frame = current_thread.pop().unwrap();
