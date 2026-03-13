@@ -8,9 +8,8 @@ use std::{
 
 use crate::{
     class_cache::ClassCache, class_file::ClassFile, class_loader::ClassLoader,
-    class_parser::ClassParserError, jvm_heap::JvmHeap, method_call_cache::MethodCallCache,
-    native_method_resolver::NativeMethodResolver, string_pool::StringPool, v_table::VTable,
-    verifier::VerifierError,
+    class_parser::ClassParserError, jvm_cache::JvmCache, jvm_heap::JvmHeap,
+    native_method_resolver::NativeMethodResolver, v_table::VTable, verifier::VerifierError,
 };
 
 pub const STRING_CLASS_NAME: &str = "java/lang/String";
@@ -488,21 +487,6 @@ impl JvmThread {
 
     pub fn get_stack_frames(&self) -> &[JvmStackFrame] {
         &self.stack
-    }
-}
-
-/// JVM-wide runtime cached information
-#[derive(Debug)]
-pub struct JvmCache {
-    pub method_call_cache: MethodCallCache,
-    pub string_pool: StringPool,
-}
-impl JvmCache {
-    pub fn new() -> Self {
-        Self {
-            method_call_cache: MethodCallCache::new(),
-            string_pool: StringPool::new(),
-        }
     }
 }
 

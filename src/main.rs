@@ -13,11 +13,10 @@ mod class_parser;
 mod exceptions;
 mod field_initialisation;
 mod jvm;
+mod jvm_cache;
 mod jvm_heap;
 mod jvm_model;
-mod method_call_cache;
 mod native_method_resolver;
-mod string_pool;
 mod v_table;
 mod verifier;
 

@@ -2,6 +2,7 @@ use std::{collections::HashMap, hash::Hash, num::NonZeroUsize, rc::Rc};
 
 use crate::{
     class_cache::CacheEntry,
+    jvm_cache::method_signature_cache::MethodSignatureId,
     jvm_model::{DescriptorType, JvmClass},
 };
 
@@ -32,8 +33,7 @@ pub struct StaticMethodCallInfo {
 
 #[derive(Debug, Clone)]
 pub struct VirtualMethodCallInfo {
-    pub method_name: String,
-    pub descriptor: String,
+    pub method_signature_id: MethodSignatureId,
     /// list of types in stack pop order (reversed)
     pub parameter_list: Vec<DescriptorType>,
 }
@@ -41,37 +41,32 @@ pub struct VirtualMethodCallInfo {
 #[derive(Debug, Clone)]
 pub struct InterfaceMethodCallInfo {
     pub interface: Rc<JvmClass>,
-    pub method_name: String,
-    pub descriptor: String,
+    pub method_signature_id: MethodSignatureId,
     /// list of types in stack pop order (reversed)
     pub parameter_list: Vec<DescriptorType>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VirtualMethodInfoKey {
-    pub method_name: String,
-    pub descriptor: String,
+    pub signature_id: MethodSignatureId,
 }
 impl From<VirtualMethodCallInfo> for VirtualMethodInfoKey {
     fn from(value: VirtualMethodCallInfo) -> Self {
         Self {
-            method_name: value.method_name,
-            descriptor: value.descriptor,
+            signature_id: value.method_signature_id,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InterfaceMethodInfoKey {
-    pub method_name: String,
-    pub descriptor: String,
+    pub method_signature_id: MethodSignatureId,
     pub interface_ptr: usize,
 }
 impl From<InterfaceMethodCallInfo> for InterfaceMethodInfoKey {
     fn from(value: InterfaceMethodCallInfo) -> Self {
         Self {
-            method_name: value.method_name,
-            descriptor: value.descriptor,
+            method_signature_id: value.method_signature_id,
             interface_ptr: Rc::as_ptr(&value.interface) as usize,
         }
     }

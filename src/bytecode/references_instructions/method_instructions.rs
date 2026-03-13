@@ -7,11 +7,13 @@ use crate::{
     },
     class_file::{ClassFile, MethodAccessFlags},
     initialise_class_and_rewind,
+    jvm_cache::method_call_cache::{
+        InterfaceMethodCallInfo, StaticMethodCallInfo, VirtualMethodCallInfo,
+    },
     jvm_model::{
         HeapObject, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmValue,
         OBJECT_CLASS_NAME,
     },
-    method_call_cache::{InterfaceMethodCallInfo, StaticMethodCallInfo, VirtualMethodCallInfo},
     throw_null_pointer_exception,
     v_table::VTableEntry,
     validate_access,
@@ -136,17 +138,12 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
     let current_class = frame.class.clone();
 
     let current_class_state_ref = current_class.state.borrow();
-    let (method_name, method_descriptor, params) = if let Some(virtual_cache) =
-        current_class_state_ref
-            .cache
-            .get_virtual_method(unvalidated_cp_index)
+    let (method_signature_id, params) = if let Some(virtual_cache) = current_class_state_ref
+        .cache
+        .get_virtual_method(unvalidated_cp_index)
     {
         if let Some(params) = pop_params_for_special(&virtual_cache.parameter_list, frame)? {
-            (
-                virtual_cache.method_name.as_str(),
-                virtual_cache.descriptor.as_str(),
-                params,
-            )
+            (virtual_cache.method_signature_id, params)
         } else {
             throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
         }
@@ -158,9 +155,12 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
 
         let called_class = context.class_loader.get(class_name)?;
         let param_types = parse_descriptor(method_descriptor)?;
+        let method_signature_id = context
+            .cache
+            .method_signature_cache
+            .get_id(method_name, method_descriptor);
         let virtual_call_info = VirtualMethodCallInfo {
-            method_name: method_name.to_owned(),
-            descriptor: method_descriptor.to_owned(),
+            method_signature_id,
             parameter_list: param_types.clone(),
         };
         context.cache.method_call_cache.register_virtual_call_info(
@@ -179,7 +179,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
             throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
         };
 
-        (method_name, method_descriptor, params)
+        (method_signature_id, params)
     };
     let object_ref = match params[0] {
         JvmValue::Reference(Some(non_zero)) => non_zero,
@@ -192,22 +192,21 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
         _ => context.class_loader.get(OBJECT_CLASS_NAME)?,
     };
 
-    let v_table_entry = if let Some(v_table_entry) = object_class
-        .state
-        .borrow()
-        .v_table
-        .get(method_name, method_descriptor)
-    {
-        v_table_entry
-    } else {
-        let v_table_entry = find_virtual_method(&object_class, method_name, method_descriptor)?;
-        object_class.state.borrow_mut().v_table.register(
-            method_name,
-            method_descriptor,
-            v_table_entry.clone(),
-        );
-        v_table_entry
-    };
+    let v_table_entry =
+        if let Some(v_table_entry) = object_class.state.borrow().v_table.get(method_signature_id) {
+            v_table_entry
+        } else {
+            let cp_index = validate_cp_index(unvalidated_cp_index)?;
+            let (_class_name, method_name, method_descriptor) =
+                current_class.read_method_ref(cp_index)?;
+            let v_table_entry = find_virtual_method(&object_class, method_name, method_descriptor)?;
+            object_class
+                .state
+                .borrow_mut()
+                .v_table
+                .register(method_signature_id, v_table_entry.clone());
+            v_table_entry
+        };
     let called_method =
         &v_table_entry.resolved_class.class_file.methods[v_table_entry.method_index];
     if called_method
@@ -240,13 +239,12 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
     let (index, _count) = read_invokeinterface_params(frame)?;
     let current_class = frame.class.clone();
     let current_class_state = current_class.state.borrow();
-    let (interface, method_name, descriptor, params) =
+    let (interface, method_signature_id, params) =
         if let Some(call_info) = current_class_state.cache.get_interface_method(index) {
             if let Some(params) = pop_params_for_special(&call_info.parameter_list, frame)? {
                 (
                     call_info.interface.clone(),
-                    call_info.method_name.as_str(),
-                    call_info.descriptor.as_str(),
+                    call_info.method_signature_id,
                     params,
                 )
             } else {
@@ -263,10 +261,13 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
             }
 
             let param_types = parse_descriptor(method_desc)?;
+            let method_signature_id = context
+                .cache
+                .method_signature_cache
+                .get_id(method_name, method_desc);
             let call_info = InterfaceMethodCallInfo {
                 interface: interface.clone(),
-                method_name: method_name.to_owned(),
-                descriptor: method_desc.to_owned(),
+                method_signature_id,
                 parameter_list: param_types.clone(),
             };
             context
@@ -280,7 +281,7 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
                 throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
             };
 
-            (interface, method_name, method_desc, params)
+            (interface, method_signature_id, params)
         };
 
     let object_ref = match params[0] {
@@ -298,22 +299,20 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
         todo!("Throw IncompatibleClassChangeError");
     }
 
-    let v_table_entry = if let Some(v_table_entry) = object_class
-        .state
-        .borrow()
-        .v_table
-        .get(method_name, descriptor)
-    {
-        v_table_entry
-    } else {
-        let v_table_entry = find_virtual_method(&object_class, method_name, descriptor)?;
-        object_class.state.borrow_mut().v_table.register(
-            method_name,
-            descriptor,
-            v_table_entry.clone(),
-        );
-        v_table_entry
-    };
+    let v_table_entry =
+        if let Some(v_table_entry) = object_class.state.borrow().v_table.get(method_signature_id) {
+            v_table_entry
+        } else {
+            let (_class_name, method_name, method_descriptor) =
+                current_class.read_interface_method_ref(index)?;
+            let v_table_entry = find_virtual_method(&object_class, method_name, method_descriptor)?;
+            object_class
+                .state
+                .borrow_mut()
+                .v_table
+                .register(method_signature_id, v_table_entry.clone());
+            v_table_entry
+        };
 
     let called_method =
         &v_table_entry.resolved_class.class_file.methods[v_table_entry.method_index];

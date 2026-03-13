@@ -3,8 +3,10 @@ use std::cell::Cell;
 use std::{mem, num::NonZeroUsize, rc::Rc};
 
 use crate::{
+    jvm_cache::method_call_cache::{
+        InterfaceMethodCallInfo, StaticMethodCallInfo, VirtualMethodCallInfo,
+    },
     jvm_model::{JvmClass, ObjectArrayType},
-    method_call_cache::{InterfaceMethodCallInfo, StaticMethodCallInfo, VirtualMethodCallInfo},
 };
 
 #[derive(Debug, Clone)]
@@ -187,6 +189,10 @@ impl ClassCache {
 
 #[cfg(test)]
 mod tests {
+    use std::mem::zeroed;
+
+    use crate::jvm_model::DescriptorType;
+
     use super::*;
 
     #[test]
@@ -195,11 +201,16 @@ mod tests {
 
         cache.register(
             5,
-            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method("end"))),
+            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method(vec![
+                DescriptorType::Integer,
+            ]))),
         );
 
         let result = cache.get_virtual_method(5);
-        assert_eq!("end", result.unwrap().method_name);
+        assert_eq!(
+            vec![DescriptorType::Integer],
+            result.unwrap().parameter_list
+        );
         assert_eq!(1, cache.get_cache_hits());
 
         let (used, total) = cache.get_storage_efficiency();
@@ -213,19 +224,29 @@ mod tests {
 
         cache.register(
             10,
-            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method("first"))),
+            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method(vec![
+                DescriptorType::Integer,
+            ]))),
         );
 
         cache.register(
             5,
-            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method("start"))),
+            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method(vec![
+                DescriptorType::Long,
+            ]))),
         );
 
         let result_start = cache.get_virtual_method(5);
         let result_old = cache.get_virtual_method(10);
 
-        assert_eq!("start", result_start.unwrap().method_name);
-        assert_eq!("first", result_old.unwrap().method_name);
+        assert_eq!(
+            vec![DescriptorType::Long],
+            result_start.unwrap().parameter_list
+        );
+        assert_eq!(
+            vec![DescriptorType::Integer],
+            result_old.unwrap().parameter_list
+        );
         assert_eq!(2, cache.get_cache_hits());
 
         let (used, total) = cache.get_storage_efficiency();
@@ -239,26 +260,32 @@ mod tests {
 
         cache.register(
             1,
-            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method("low"))),
+            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method(vec![
+                DescriptorType::Byte,
+            ]))),
         );
 
         cache.register(
             10,
-            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method("high"))),
+            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method(vec![
+                DescriptorType::Long,
+            ]))),
         );
 
         cache.register(
             5,
-            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method("middle"))),
+            Rc::new(CacheEntry::VirtualMethodCall(mock_virtual_method(vec![
+                DescriptorType::Integer,
+            ]))),
         );
 
         let low = cache.get_virtual_method(1);
         let mid = cache.get_virtual_method(5);
         let high = cache.get_virtual_method(10);
 
-        assert_eq!("low", low.unwrap().method_name);
-        assert_eq!("middle", mid.unwrap().method_name);
-        assert_eq!("high", high.unwrap().method_name);
+        assert_eq!(vec![DescriptorType::Byte], low.unwrap().parameter_list);
+        assert_eq!(vec![DescriptorType::Integer], mid.unwrap().parameter_list);
+        assert_eq!(vec![DescriptorType::Long], high.unwrap().parameter_list);
         assert_eq!(3, cache.get_cache_hits());
 
         let (used, total) = cache.get_storage_efficiency();
@@ -266,11 +293,10 @@ mod tests {
         assert_eq!(10, total);
     }
 
-    fn mock_virtual_method(name: &str) -> VirtualMethodCallInfo {
+    fn mock_virtual_method(parameter_list: Vec<DescriptorType>) -> VirtualMethodCallInfo {
         VirtualMethodCallInfo {
-            method_name: name.to_owned(),
-            descriptor: "()V".to_owned(),
-            parameter_list: vec![],
+            method_signature_id: unsafe { zeroed() },
+            parameter_list,
         }
     }
 }

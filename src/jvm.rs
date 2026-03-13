@@ -6,10 +6,10 @@ use crate::{
     class_loader::ClassLoader,
     exceptions::handle_exception,
     field_initialisation::determine_static_fields,
+    jvm_cache::JvmCache,
     jvm_heap::JvmHeap,
     jvm_model::{
-        FrameReturn, JvmCache, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmThread,
-        JvmValue,
+        FrameReturn, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmThread, JvmValue,
     },
     native_method_resolver::NativeMethodResolver,
 };

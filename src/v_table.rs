@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::jvm_model::JvmClass;
+use crate::{jvm_cache::method_signature_cache::MethodSignatureId, jvm_model::JvmClass};
 
 #[derive(Debug, Clone)]
 pub struct VTableEntry {
@@ -24,7 +24,7 @@ impl VTableEntry {
 
 #[derive(Debug)]
 pub struct VTable {
-    methods: HashMap<String, HashMap<String, VTableEntry>>,
+    methods: HashMap<MethodSignatureId, VTableEntry>,
 }
 impl VTable {
     pub fn new() -> Self {
@@ -33,17 +33,12 @@ impl VTable {
         }
     }
 
-    pub fn get(&self, method_name: &str, descriptor: &str) -> Option<VTableEntry> {
-        self.methods.get(method_name)?.get(descriptor).cloned()
+    pub fn get(&self, id: MethodSignatureId) -> Option<VTableEntry> {
+        self.methods.get(&id).cloned()
     }
 
-    pub fn register(&mut self, method_name: &str, descriptor: &str, entry: VTableEntry) {
-        if let Some(overloaded_method) = self.methods.get_mut(method_name) {
-            overloaded_method.insert(descriptor.to_owned(), entry);
-        } else {
-            let mut new_method = HashMap::with_capacity(1);
-            new_method.insert(descriptor.to_owned(), entry);
-            self.methods.insert(method_name.to_owned(), new_method);
-        }
+    pub fn register(&mut self, id: MethodSignatureId, entry: VTableEntry) {
+        let old_entry = self.methods.insert(id, entry);
+        debug_assert!(old_entry.is_none());
     }
 }
