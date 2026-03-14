@@ -1326,6 +1326,129 @@ mod tests {
         test_exceptions_multiple_throw_helper(5, 5 * 55555);
     }
 
+    #[test]
+    fn test_cache_static_once() {
+        test_cache_static_helper(1);
+    }
+
+    #[test]
+    fn test_cache_static_many() {
+        test_cache_static_helper(100);
+    }
+
+    #[test]
+    fn test_cache_virtual_once() {
+        test_cache_virtual_helper(1);
+    }
+
+    #[test]
+    fn test_cache_virtual_many() {
+        test_cache_virtual_helper(100);
+    }
+
+    #[test]
+    fn test_cache_interface_once() {
+        test_cache_interface_helper(1);
+    }
+
+    #[test]
+    fn test_cache_interface_many() {
+        test_cache_interface_helper(100);
+    }
+
+    fn test_cache_interface_helper(count: usize) {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/CacheTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "CacheTest".to_owned(),
+                "testInterface".to_owned(),
+                "(III)Z".to_owned(),
+                vec![
+                    JvmValue::Int(count as i32),
+                    JvmValue::Int(55),
+                    JvmValue::Int(65),
+                ],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => assert_eq!(1, int),
+            _ => panic!("expected int"),
+        }
+        let test_class = jvm.class_loader.get("CacheTest").unwrap();
+        let called_class = jvm.class_loader.get("CacheTestClass").unwrap();
+        assert_eq!(0, test_class.state.borrow().v_table.get_hits());
+        assert_eq!(count - 1, called_class.state.borrow().v_table.get_hits());
+        let hits = test_class.state.borrow().cache.get_cache_hits();
+        assert_eq!(count, hits);
+        assert_interfaces_not_duplicated(jvm.class_loader.get_all_loaded_classes());
+    }
+
+    fn test_cache_virtual_helper(count: usize) {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/CacheTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "CacheTest".to_owned(),
+                "testVirtual".to_owned(),
+                "(III)Z".to_owned(),
+                vec![
+                    JvmValue::Int(count as i32),
+                    JvmValue::Int(55),
+                    JvmValue::Int(65),
+                ],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => assert_eq!(1, int),
+            _ => panic!("expected int"),
+        }
+        let test_class = jvm.class_loader.get("CacheTest").unwrap();
+        let called_class = jvm.class_loader.get("CacheTestClass").unwrap();
+        assert_eq!(0, test_class.state.borrow().v_table.get_hits());
+        assert_eq!(count - 1, called_class.state.borrow().v_table.get_hits());
+        let hits = test_class.state.borrow().cache.get_cache_hits();
+        assert_eq!(count, hits);
+        assert_interfaces_not_duplicated(jvm.class_loader.get_all_loaded_classes());
+    }
+
+    fn test_cache_static_helper(count: usize) {
+        let mut jvm = create_jvm(vec![ClassSource::Jar(
+            "test_classes/CacheTest.jar".to_owned(),
+        )]);
+        let result = jvm
+            .run(
+                "CacheTest".to_owned(),
+                "testStatic".to_owned(),
+                "(III)Z".to_owned(),
+                vec![
+                    JvmValue::Int(count as i32),
+                    JvmValue::Int(55),
+                    JvmValue::Int(56),
+                ],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => assert_eq!(1, int),
+            _ => panic!("expected int"),
+        }
+        let test_class = jvm.class_loader.get("CacheTest").unwrap();
+        let called_class = jvm.class_loader.get("CacheTestClass").unwrap();
+        assert_eq!(0, test_class.state.borrow().v_table.get_hits());
+        assert_eq!(0, called_class.state.borrow().v_table.get_hits());
+        let hits = test_class.state.borrow().cache.get_cache_hits();
+        assert_eq!(count, hits);
+        assert_interfaces_not_duplicated(jvm.class_loader.get_all_loaded_classes());
+    }
+
     fn test_exceptions_multiple_throw_helper(input: i32, expected: i32) {
         let mut jvm = create_jvm(vec![ClassSource::Jar(
             "test_classes/ExceptionsTest.jar".to_owned(),

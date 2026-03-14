@@ -176,6 +176,7 @@ impl ClassCache {
         self.array[offset_index as usize].as_ref()
     }
 
+    /// for testing
     #[cfg(debug_assertions)]
     pub fn get_cache_hits(&self) -> usize {
         self.cache_hits.get()

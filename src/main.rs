@@ -3,6 +3,7 @@ use crate::{
     jvm::Jvm,
     jvm_heap::JvmHeap,
     jvm_model::JvmValue,
+    v_table::VTable,
 };
 
 mod bytecode;

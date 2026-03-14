@@ -25,20 +25,37 @@ impl VTableEntry {
 #[derive(Debug)]
 pub struct VTable {
     methods: HashMap<MethodSignatureId, VTableEntry>,
+    #[cfg(debug_assertions)]
+    hits: std::cell::Cell<usize>,
 }
 impl VTable {
     pub fn new() -> Self {
         Self {
             methods: HashMap::new(),
+            #[cfg(debug_assertions)]
+            hits: std::cell::Cell::new(0),
         }
     }
 
     pub fn get(&self, id: MethodSignatureId) -> Option<VTableEntry> {
-        self.methods.get(&id).cloned()
+        let result = self.methods.get(&id).cloned();
+        #[cfg(debug_assertions)]
+        {
+            if result.is_some() {
+                self.hits.set(self.hits.get() + 1);
+            }
+        }
+        result
     }
 
     pub fn register(&mut self, id: MethodSignatureId, entry: VTableEntry) {
         let old_entry = self.methods.insert(id, entry);
         debug_assert!(old_entry.is_none());
+    }
+
+    /// for testing
+    #[cfg(debug_assertions)]
+    pub fn get_hits(&self) -> usize {
+        self.hits.get()
     }
 }
