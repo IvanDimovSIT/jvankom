@@ -134,6 +134,12 @@ fn get_native_methods() -> Vec<(
             "()I",
             object_methods::hash_code,
         ),
+        (
+            OBJECT_CLASS_NAME,
+            "getClass",
+            "()Ljava/lang/Class;",
+            object_methods::get_class,
+        ),
     ]
 }
 

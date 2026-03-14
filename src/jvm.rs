@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{num::NonZeroUsize, rc::Rc};
 
 use crate::{
     bytecode::BYTECODE_TABLE,
@@ -9,7 +9,8 @@ use crate::{
     jvm_cache::JvmCache,
     jvm_heap::JvmHeap,
     jvm_model::{
-        FrameReturn, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmThread, JvmValue,
+        FrameReturn, HeapObject, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame,
+        JvmThread, JvmValue, ObjectArray, ObjectArrayType, STRING_CLASS_NAME,
     },
     native_method_resolver::NativeMethodResolver,
 };
@@ -130,6 +131,30 @@ impl Jvm {
 
     pub fn get_threads(self) -> Vec<JvmThread> {
         self.threads
+    }
+
+    pub fn run_main(&mut self, class_name: String, args: Vec<String>) -> JvmResult<()> {
+        const LIBRARY_CLASS_NAME: &str = "jvankomrt/JVMInit";
+        const LIBRARY_METHOD_NAME: &str = "init";
+        const LIBRARY_METHOD_DESC: &str = "()V";
+        const MAIN_METHOD_NAME: &str = "main";
+        const MAIN_METHOD_DESC: &str = "([Ljava/lang/String;)V";
+        self.run_method(
+            LIBRARY_CLASS_NAME.to_owned(),
+            LIBRARY_METHOD_NAME.to_owned(),
+            LIBRARY_METHOD_DESC.to_owned(),
+            vec![],
+        )?;
+        self.threads.clear();
+        let params = self.prepare_string_args(args)?;
+        self.run_method(
+            class_name,
+            MAIN_METHOD_NAME.to_owned(),
+            MAIN_METHOD_DESC.to_owned(),
+            params,
+        )?;
+
+        Ok(())
     }
 
     pub fn run_with_init(
@@ -286,6 +311,33 @@ impl Jvm {
                 let (u, t) = c.state.borrow().cache.get_storage_efficiency();
                 (used + u, total + t)
             })
+    }
+
+    fn prepare_string_args(&mut self, args: Vec<String>) -> JvmResult<Vec<JvmValue>> {
+        let mut strings = vec![];
+        let string_class = self.class_loader.get(STRING_CLASS_NAME)?;
+        for arg in args {
+            let mut obj = string_class
+                .state
+                .borrow()
+                .default_object
+                .clone()
+                .expect("String needs to be initialised");
+            self.cache
+                .string_pool
+                .initialise_string_fields(&arg, &mut obj, &mut self.heap);
+            let string_ref = self.heap.allocate(obj);
+            strings.push(Some(string_ref));
+        }
+
+        let array = HeapObject::ObjectArray(ObjectArray {
+            array: strings,
+            dimension: NonZeroUsize::new(1).unwrap(),
+            object_array_type: ObjectArrayType::Class(string_class),
+        });
+        let array_ref = self.heap.allocate(array);
+
+        Ok(vec![JvmValue::Reference(Some(array_ref))])
     }
 }
 
@@ -1391,6 +1443,16 @@ mod tests {
     #[test]
     fn test_print_float() {
         test_print_helper("testPrintFloat", "0.2\n0.1");
+    }
+
+    #[test]
+    fn test_run_main() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
+        let args = vec!["Hello".to_owned(), "World".to_owned(), "!!!".to_owned()];
+        jvm.run_main("PrintTest".to_owned(), args).unwrap();
+
+        assert_eq!("Hello\nWorld\n!!!\n", *PRINT_LOG.lock().unwrap());
+        PRINT_LOG.lock().unwrap().clear();
     }
 
     fn test_print_helper(method: impl Into<String>, expected_print: &str) {

@@ -18,6 +18,7 @@ mod jvm_cache;
 mod jvm_heap;
 mod jvm_model;
 mod native_method_resolver;
+mod object_initalisation;
 mod v_table;
 mod verifier;
 
@@ -35,11 +36,9 @@ fn main() {
     .unwrap();
     let heap = JvmHeap::new(1000, 1000);
     let mut jvm = Jvm::new(class_loader, heap);
-    let result = jvm.run_with_init(
+    let result = jvm.run_main(
         "PrintTest".to_owned(),
-        "testPrintSimple".to_owned(),
-        "()V".to_owned(),
-        vec![],
+        vec!["Hello".to_owned(), "World!".to_owned()],
     );
 
     if let Err(err) = result {
@@ -63,16 +62,13 @@ fn main() {
         return;
     }
 
-    //let jvm_value = result.unwrap().unwrap();
-
-    //println!("{jvm_value:?}");
     show_cache_storage(&jvm);
 }
 
 fn show_cache_storage(jvm: &Jvm) {
     let (used, total) = jvm.get_cache_storage_efficieny();
     println!(
-        "Storage efficiency: {}/{}, {}%",
+        "JVM cache storage efficiency: {}/{}, {}%",
         used,
         total,
         100.0 * used as f64 / total as f64
