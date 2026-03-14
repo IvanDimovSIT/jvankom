@@ -45,6 +45,7 @@ pub const ICONST_5: u8 = 0x8;
 pub const BIPUSH: u8 = 0x10;
 pub const SIPUSH: u8 = 0x11;
 pub const LDC: u8 = 0x12;
+pub const LDC_W: u8 = 0x13;
 pub const LDC2_W: u8 = 0x14;
 pub const ILOAD: u8 = 0x15;
 pub const ALOAD: u8 = 0x19;
@@ -116,6 +117,7 @@ pub const NEWARRAY: u8 = 0xbc;
 pub const ANEWARRAY: u8 = 0xbd;
 pub const ARRAYLENGTH: u8 = 0xbe;
 pub const ATHROW: u8 = 0xbf;
+pub const CHECKCAST: u8 = 0xc0;
 pub const INSTANCEOF: u8 = 0xc1;
 pub const IFNULL: u8 = 0xc6;
 pub const IFNONNULL: u8 = 0xc7;
@@ -143,6 +145,7 @@ impl BytecodeTable {
             (BIPUSH, bipush_instruction),
             (SIPUSH, sipush_instruction),
             (LDC, ldc_instruction),
+            (LDC_W, ldc_w_instruction),
             (LDC2_W, ldc2w_instruction),
             (ILOAD, integer_load_n),
             (ALOAD, reference_load_n),
@@ -214,6 +217,7 @@ impl BytecodeTable {
             (ANEWARRAY, new_object_array_instruction),
             (ARRAYLENGTH, array_length_instruction),
             (ATHROW, throw_exception_instruction),
+            (CHECKCAST, check_cast_instruction),
             (INSTANCEOF, instance_of_instruction),
             (IFNULL, if_null_instruction),
             (IFNONNULL, if_not_null_instruction),
@@ -258,8 +262,22 @@ fn handle_unrecognised_instruction(context: JvmContext) -> JvmResult<()> {
 macro_rules! initialise_class_and_rewind {
     ($frame:expr, $context:expr, $jvm_class:expr, $size:expr) => {{
         const _CHECK_SIZE: () = assert!($size > 0);
+        $frame.program_counter -= $size;
+        return $crate::jvm::Jvm::initialise_class(
+            $context.current_thread,
+            $jvm_class,
+            $context.class_loader,
+            $jvm_class.class_file.get_class_name(),
+        );
+    }};
+}
 
-        $frame.program_counter -= $size; // rewind
+/// initialises the class and rewinds the instruction, where $size is the runtime size of the instruction
+#[macro_export]
+macro_rules! initialise_class_and_rewind_runtime {
+    ($frame:expr, $context:expr, $jvm_class:expr, $size:expr) => {{
+        debug_assert!($size > 0);
+        $frame.program_counter -= $size;
         return $crate::jvm::Jvm::initialise_class(
             $context.current_thread,
             $jvm_class,

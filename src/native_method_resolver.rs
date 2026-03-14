@@ -4,22 +4,28 @@ use crate::{
     class_loader::ClassLoader,
     jvm_heap::JvmHeap,
     jvm_model::{
-        CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME, JvmClass, JvmError, JvmResult,
-        JvmThread, JvmValue, OBJECT_CLASS_NAME, SYSTEM_CLASS_NAME, THROWABLE_CLASS_NAME,
+        CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME, JVANKOM_PRINT_STEAM_NAME, JvmClass,
+        JvmError, JvmResult, JvmThread, JvmValue, OBJECT_CLASS_NAME, SYSTEM_CLASS_NAME,
+        THROWABLE_CLASS_NAME,
     },
 };
 
 mod class_methods;
 mod double_methods;
 mod float_methods;
+mod jvankom_print_stream_methods;
 mod object_methods;
 mod system_methods;
 mod throwable_methods;
 
+/// for testing
+#[cfg(test)]
+pub static PRINT_LOG: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
 type NativeMethodHandler =
     fn(&mut JvmThread, &mut JvmHeap, &mut ClassLoader, Vec<JvmValue>) -> JvmResult<()>;
 
-const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 11] = [
+const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 15] = [
     (
         OBJECT_CLASS_NAME,
         "<init>",
@@ -85,6 +91,30 @@ const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 11] = [
         "fillInStackTrace",
         "(I)Ljava/lang/Throwable;",
         throwable_methods::fill_in_stack_trace,
+    ),
+    (
+        JVANKOM_PRINT_STEAM_NAME,
+        "construct",
+        "()Ljava/io/PrintStream;",
+        jvankom_print_stream_methods::construct,
+    ),
+    (
+        JVANKOM_PRINT_STEAM_NAME,
+        "nativeWriteString",
+        "(Ljava/lang/String;)V",
+        jvankom_print_stream_methods::native_write_string,
+    ),
+    (
+        SYSTEM_CLASS_NAME,
+        "setOut0",
+        "(Ljava/io/PrintStream;)V",
+        system_methods::set_out0,
+    ),
+    (
+        SYSTEM_CLASS_NAME,
+        "setErr0",
+        "(Ljava/io/PrintStream;)V",
+        system_methods::set_err0,
     ),
 ];
 

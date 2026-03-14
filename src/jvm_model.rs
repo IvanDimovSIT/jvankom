@@ -27,6 +27,7 @@ pub const ARRAY_STORE_EXCEPTION_NAME: &str = "java/lang/ArrayStoreException";
 pub const ARITHMETIC_EXCEPTION_NAME: &str = "java/lang/ArithmeticException";
 pub const ILLEGAL_ACCESS_ERROR_NAME: &str = "java/lang/IllegalAccessError";
 pub const THROWABLE_INTERFACE_NAME: &str = "java/lang/Throwable";
+pub const JVANKOM_PRINT_STEAM_NAME: &str = "jvankomrt/JVankoMPrintStream";
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
 

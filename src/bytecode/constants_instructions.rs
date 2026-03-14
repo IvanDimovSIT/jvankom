@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::{
     class_file::ConstantValue,
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
-    initialise_class_and_rewind,
+    initialise_class_and_rewind_runtime,
     jvm_model::{CLASS_CLASS_NAME, JvmClass, STRING_CLASS_NAME},
 };
 
@@ -66,9 +66,29 @@ pub fn ldc2w_instruction(context: JvmContext) -> JvmResult<()> {
 
 pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
     const INSTRUCTION_SIZE: usize = 2;
+    generic_ldc_instruction::<INSTRUCTION_SIZE, _>(context, |frame| {
+        let bytecode_value = read_u8_from_bytecode(frame) as u16;
+        validate_cp_index(bytecode_value)
+    })
+}
+
+pub fn ldc_w_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 3;
+    generic_ldc_instruction::<INSTRUCTION_SIZE, _>(context, |frame| {
+        let bytecode_value = read_u16_from_bytecode(frame);
+        validate_cp_index(bytecode_value)
+    })
+}
+
+fn generic_ldc_instruction<const INSTRUCTION_SIZE: usize, F>(
+    context: JvmContext,
+    read_index_fn: F,
+) -> JvmResult<()>
+where
+    F: FnOnce(&mut JvmStackFrame) -> JvmResult<NonZeroUsize>,
+{
     let frame = context.current_thread.top_frame();
-    let bytecode_value = read_u8_from_bytecode(frame) as u16;
-    let constant_index = validate_cp_index(bytecode_value)?;
+    let constant_index = read_index_fn(frame)?;
 
     let value = match frame.class.class_file.constant_pool.get(constant_index) {
         ConstantValue::Int(int) => JvmValue::Int(*int),
@@ -77,7 +97,12 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
             let class_class = context.class_loader.get(CLASS_CLASS_NAME)?;
 
             if !class_class.state.borrow().is_initialised {
-                initialise_class_and_rewind!(frame, context, &class_class, INSTRUCTION_SIZE);
+                initialise_class_and_rewind_runtime!(
+                    frame,
+                    context,
+                    &class_class,
+                    INSTRUCTION_SIZE
+                );
             }
 
             let class_name = frame
@@ -96,7 +121,12 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
 
             // initialise class and rewind
             if !string_class.state.borrow().is_initialised {
-                initialise_class_and_rewind!(frame, context, &string_class, INSTRUCTION_SIZE);
+                initialise_class_and_rewind_runtime!(
+                    frame,
+                    context,
+                    &string_class,
+                    INSTRUCTION_SIZE
+                );
             }
 
             let mut string_obj = create_string_object(&string_class)?;
