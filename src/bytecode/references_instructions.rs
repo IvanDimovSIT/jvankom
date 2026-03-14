@@ -332,6 +332,28 @@ pub fn check_cast_instruction(context: JvmContext) -> JvmResult<()> {
     Ok(())
 }
 
+pub fn monitor_enter_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 1;
+    let frame = context.current_thread.top_frame();
+    let obj = pop_reference(frame)?;
+    if obj.is_none() {
+        throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
+    }
+    // TODO: implement monitor_enter_instruction
+    Ok(())
+}
+
+pub fn monitor_exit_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 1;
+    let frame = context.current_thread.top_frame();
+    let obj = pop_reference(frame)?;
+    if obj.is_none() {
+        throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
+    }
+    // TODO: implement monitor_exit_instruction
+    Ok(())
+}
+
 /// convert type reference to array type
 fn determine_object_array_type_and_dimension(
     type_info: TypeInfo,

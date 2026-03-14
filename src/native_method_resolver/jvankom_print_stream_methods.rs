@@ -1,15 +1,11 @@
-#[cfg(test)]
-use std::sync::Mutex;
-
 use crate::{
-    bytecode::expect_reference,
+    bytecode::{expect_float, expect_reference},
     class_loader::ClassLoader,
     exceptions::throw_jvm_exception,
-    jvm::Jvm,
     jvm_cache::string_pool::StringPool,
     jvm_heap::JvmHeap,
     jvm_model::{
-        DescriptorType, HeapObject, JVANKOM_PRINT_STEAM_NAME, JvmResult, JvmThread, JvmValue,
+        HeapObject, JVANKOM_PRINT_STEAM_CLASS_NAME, JvmResult, JvmThread, JvmValue,
         NULL_POINTER_EXCEPTION_NAME,
     },
 };
@@ -21,7 +17,7 @@ pub fn construct(
     _params: Vec<JvmValue>,
 ) -> JvmResult<()> {
     let frame = thread.top_frame();
-    let class = class_loader.get(JVANKOM_PRINT_STEAM_NAME)?;
+    let class = class_loader.get(JVANKOM_PRINT_STEAM_CLASS_NAME)?;
     let print_steam = HeapObject::Object {
         class: class.clone(),
         fields: vec![],
@@ -30,9 +26,7 @@ pub fn construct(
     frame
         .operand_stack
         .push(JvmValue::Reference(Some(reference)));
-    if !class.state.borrow().is_initialised {
-        Jvm::initialise_class(thread, &class, class_loader, JVANKOM_PRINT_STEAM_NAME)?;
-    }
+    debug_assert!(class.state.borrow().is_initialised);
 
     Ok(())
 }
@@ -71,12 +65,29 @@ pub fn native_write_string(
     Ok(())
 }
 
+pub fn native_write_float(
+    _thread: &mut JvmThread,
+    _heap: &mut JvmHeap,
+    _class_loader: &mut ClassLoader,
+    params: Vec<JvmValue>,
+) -> JvmResult<()> {
+    let float = expect_float(params[0])?;
+    let string = format!("{float}");
+    print_string(&string);
+
+    Ok(())
+}
+
 fn print_chars(chars: &[u16]) {
     let string: String = chars.iter().map(|c| (*c) as u8 as char).collect();
+    print_string(&string);
+}
+
+fn print_string(string: &str) {
     #[cfg(test)]
     {
         *crate::native_method_resolver::PRINT_LOG.lock().unwrap() += &string;
     }
 
-    println!("{string}");
+    print!("{string}");
 }

@@ -13,6 +13,27 @@ public class JVankoMPrintStream extends PrintStream {
 
     public static native PrintStream construct();
 
+    @Override
+    public void println(int i) {
+        nativeWriteString(Integer.toString(i));
+        nativeWriteString("\n");
+    }
+
+    @Override
+    public void print(int i) {
+        nativeWriteString(Integer.toString(i));
+    }
+
+    @Override
+    public void println(float f) {
+        nativeWriteFloat(f);
+        nativeWriteString("\n");
+    }
+
+    @Override
+    public void print(float f) {
+        nativeWriteFloat(f);
+    }
 
     @Override
     public void println(String s) {
@@ -48,5 +69,6 @@ public class JVankoMPrintStream extends PrintStream {
 
     private static native void nativeWrite(byte[] bytes, int offset, int length);
     private static native void nativeWriteString(String str);
+    private static native void nativeWriteFloat(float f);
 
 }

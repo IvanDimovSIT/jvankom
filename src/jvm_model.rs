@@ -27,7 +27,7 @@ pub const ARRAY_STORE_EXCEPTION_NAME: &str = "java/lang/ArrayStoreException";
 pub const ARITHMETIC_EXCEPTION_NAME: &str = "java/lang/ArithmeticException";
 pub const ILLEGAL_ACCESS_ERROR_NAME: &str = "java/lang/IllegalAccessError";
 pub const THROWABLE_INTERFACE_NAME: &str = "java/lang/Throwable";
-pub const JVANKOM_PRINT_STEAM_NAME: &str = "jvankomrt/JVankoMPrintStream";
+pub const JVANKOM_PRINT_STEAM_CLASS_NAME: &str = "jvankomrt/JVankoMPrintStream";
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
 
@@ -430,17 +430,23 @@ impl JvmStackFrame {
         let bytecode = &self.class.class_file.methods[self.method_index]
             .get_bytecode(self.bytecode_index)
             .code;
-        let stack = &self.operand_stack;
-        let locals = &self.local_variables;
+        let bytecode_display = &bytecode[0..50.min(bytecode.len())];
+        let stack = &self.operand_stack[0..20.min(self.operand_stack.len())];
+        let locals = &self.local_variables[0..20.min(self.local_variables.len())];
         let method = self
             .class
             .class_file
             .constant_pool
             .expect_utf8(self.class.class_file.methods[self.method_index].name_index);
+        let descriptor = self
+            .class
+            .class_file
+            .constant_pool
+            .expect_utf8(self.class.class_file.methods[self.method_index].descriptor_index);
         let class_name = self.class.class_file.get_class_name();
 
         println!(
-            "method:{class_name}.{method}\ncode:\n{bytecode:?}\nprogram counter:\n{program_counter}\nstack:\n{stack:?}\nlocals:\n{locals:?}\n"
+            "method:{class_name}.{method}{descriptor}\ncode:\n{bytecode_display:?}\nprogram counter:\n{program_counter}\nstack:\n{stack:?}\nlocals:\n{locals:?}\n"
         );
     }
 }

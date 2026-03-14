@@ -247,6 +247,7 @@ impl Jvm {
                 }
                 debug_assert!(frame.program_counter < bytecode.code.len());
                 // DEBUG
+                #[cfg(debug_assertions)]
                 frame.debug_print();
 
                 let instruction = bytecode.code[frame.program_counter];
@@ -1382,6 +1383,16 @@ mod tests {
         test_print_helper("testPrintSimple", "Hello, World!\n");
     }
 
+    #[test]
+    fn test_print_int() {
+        test_print_helper("testPrintInteger", "67\n");
+    }
+
+    #[test]
+    fn test_print_float() {
+        test_print_helper("testPrintFloat", "0.2\n0.1");
+    }
+
     fn test_print_helper(method: impl Into<String>, expected_print: &str) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
         let result = jvm
@@ -1395,6 +1406,7 @@ mod tests {
 
         assert!(result.is_none());
         assert_eq!(expected_print, *PRINT_LOG.lock().unwrap());
+        PRINT_LOG.lock().unwrap().clear();
     }
 
     fn test_cache_interface_helper(count: usize) {
