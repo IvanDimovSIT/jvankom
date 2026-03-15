@@ -5,7 +5,10 @@ use crate::{
     class_loader::ClassLoader,
     exceptions::throw_jvm_exception,
     jvm_heap::JvmHeap,
-    jvm_model::{HeapObject, JvmResult, JvmThread, JvmValue, NULL_POINTER_EXCEPTION_NAME},
+    jvm_model::{
+        DescriptorType, HeapObject, JvmResult, JvmThread, JvmValue, NULL_POINTER_EXCEPTION_NAME,
+        SYSTEM_CLASS_NAME,
+    },
 };
 
 pub fn register_natives(
@@ -14,6 +17,44 @@ pub fn register_natives(
     _class_loader: &mut ClassLoader,
     _params: Vec<JvmValue>,
 ) -> JvmResult<()> {
+    Ok(())
+}
+
+pub fn set_out0(
+    _thread: &mut JvmThread,
+    _heap: &mut JvmHeap,
+    class_loader: &mut ClassLoader,
+    params: Vec<JvmValue>,
+) -> JvmResult<()> {
+    set_system_field(class_loader, params, "out")
+}
+
+pub fn set_err0(
+    _thread: &mut JvmThread,
+    _heap: &mut JvmHeap,
+    class_loader: &mut ClassLoader,
+    params: Vec<JvmValue>,
+) -> JvmResult<()> {
+    set_system_field(class_loader, params, "err")
+}
+
+fn set_system_field(
+    class_loader: &mut ClassLoader,
+    params: Vec<JvmValue>,
+    field_name: &str,
+) -> JvmResult<()> {
+    let print_stream = expect_reference(params[0])?;
+    let system_class = class_loader.get(SYSTEM_CLASS_NAME)?;
+    let mut system_class_state = system_class.state.borrow_mut();
+    let field = system_class_state
+        .static_fields
+        .as_mut()
+        .expect("fields not initialised")
+        .iter_mut()
+        .find(|f| f.name == field_name && f.descriptor_type == DescriptorType::Reference)
+        .expect("fields not found for java/lang/System");
+    field.value = JvmValue::Reference(print_stream);
+
     Ok(())
 }
 

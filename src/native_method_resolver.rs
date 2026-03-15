@@ -4,89 +4,144 @@ use crate::{
     class_loader::ClassLoader,
     jvm_heap::JvmHeap,
     jvm_model::{
-        CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME, JvmClass, JvmError, JvmResult,
-        JvmThread, JvmValue, OBJECT_CLASS_NAME, SYSTEM_CLASS_NAME, THROWABLE_CLASS_NAME,
+        CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME, JVANKOM_PRINT_STEAM_CLASS_NAME,
+        JvmClass, JvmError, JvmResult, JvmThread, JvmValue, OBJECT_CLASS_NAME, SYSTEM_CLASS_NAME,
+        THROWABLE_CLASS_NAME,
     },
 };
 
 mod class_methods;
 mod double_methods;
 mod float_methods;
+mod jvankom_print_stream_methods;
 mod object_methods;
 mod system_methods;
 mod throwable_methods;
 
+/// log of all printed strings, for testing purposes
+#[cfg(test)]
+pub static PRINT_LOG: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
 type NativeMethodHandler =
     fn(&mut JvmThread, &mut JvmHeap, &mut ClassLoader, Vec<JvmValue>) -> JvmResult<()>;
 
-const NATIVE_METHODS: [(&str, &str, &str, NativeMethodHandler); 11] = [
-    (
-        OBJECT_CLASS_NAME,
-        "<init>",
-        "()V",
-        object_methods::object_constructor,
-    ),
-    (
-        OBJECT_CLASS_NAME,
-        "registerNatives",
-        "()V",
-        object_methods::register_natives,
-    ),
-    (
-        SYSTEM_CLASS_NAME,
-        "registerNatives",
-        "()V",
-        system_methods::register_natives,
-    ),
-    (
-        SYSTEM_CLASS_NAME,
-        "arraycopy",
-        "(Ljava/lang/Object;ILjava/lang/Object;II)V",
-        system_methods::array_copy,
-    ),
-    (
-        CLASS_CLASS_NAME,
-        "registerNatives",
-        "()V",
-        class_methods::register_natives,
-    ),
-    (
-        CLASS_CLASS_NAME,
-        "desiredAssertionStatus0",
-        "(Ljava/lang/Class;)Z",
-        class_methods::desired_assertion_status0,
-    ),
-    (
-        CLASS_CLASS_NAME,
-        "getPrimitiveClass",
-        "(Ljava/lang/String;)Ljava/lang/Class;",
-        class_methods::get_primitive_class,
-    ),
-    (
-        FLOAT_CLASS_NAME,
-        "floatToRawIntBits",
-        "(F)I",
-        float_methods::float_to_raw_int_bits,
-    ),
-    (
-        DOUBLE_CLASS_NAME,
-        "doubleToRawLongBits",
-        "(D)J",
-        double_methods::double_to_raw_long_bits,
-    ),
-    (
-        DOUBLE_CLASS_NAME,
-        "longBitsToDouble",
-        "(J)D",
-        double_methods::long_bits_to_double,
-    ),
-    (
-        THROWABLE_CLASS_NAME,
-        "fillInStackTrace",
-        "(I)Ljava/lang/Throwable;",
-        throwable_methods::fill_in_stack_trace,
-    ),
-];
+fn get_native_methods() -> Vec<(
+    &'static str,
+    &'static str,
+    &'static str,
+    NativeMethodHandler,
+)> {
+    vec![
+        (
+            OBJECT_CLASS_NAME,
+            "<init>",
+            "()V",
+            object_methods::object_constructor,
+        ),
+        (
+            OBJECT_CLASS_NAME,
+            "registerNatives",
+            "()V",
+            object_methods::register_natives,
+        ),
+        (
+            SYSTEM_CLASS_NAME,
+            "registerNatives",
+            "()V",
+            system_methods::register_natives,
+        ),
+        (
+            SYSTEM_CLASS_NAME,
+            "arraycopy",
+            "(Ljava/lang/Object;ILjava/lang/Object;II)V",
+            system_methods::array_copy,
+        ),
+        (
+            CLASS_CLASS_NAME,
+            "registerNatives",
+            "()V",
+            class_methods::register_natives,
+        ),
+        (
+            CLASS_CLASS_NAME,
+            "desiredAssertionStatus0",
+            "(Ljava/lang/Class;)Z",
+            class_methods::desired_assertion_status0,
+        ),
+        (
+            CLASS_CLASS_NAME,
+            "getPrimitiveClass",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            class_methods::get_primitive_class,
+        ),
+        (
+            FLOAT_CLASS_NAME,
+            "floatToRawIntBits",
+            "(F)I",
+            float_methods::float_to_raw_int_bits,
+        ),
+        (
+            DOUBLE_CLASS_NAME,
+            "doubleToRawLongBits",
+            "(D)J",
+            double_methods::double_to_raw_long_bits,
+        ),
+        (
+            DOUBLE_CLASS_NAME,
+            "longBitsToDouble",
+            "(J)D",
+            double_methods::long_bits_to_double,
+        ),
+        (
+            THROWABLE_CLASS_NAME,
+            "fillInStackTrace",
+            "(I)Ljava/lang/Throwable;",
+            throwable_methods::fill_in_stack_trace,
+        ),
+        (
+            JVANKOM_PRINT_STEAM_CLASS_NAME,
+            "construct",
+            "()Ljava/io/PrintStream;",
+            jvankom_print_stream_methods::construct,
+        ),
+        (
+            JVANKOM_PRINT_STEAM_CLASS_NAME,
+            "nativeWriteString",
+            "(Ljava/lang/String;)V",
+            jvankom_print_stream_methods::native_write_string,
+        ),
+        (
+            JVANKOM_PRINT_STEAM_CLASS_NAME,
+            "nativeWriteFloat",
+            "(F)V",
+            jvankom_print_stream_methods::native_write_float,
+        ),
+        (
+            SYSTEM_CLASS_NAME,
+            "setOut0",
+            "(Ljava/io/PrintStream;)V",
+            system_methods::set_out0,
+        ),
+        (
+            SYSTEM_CLASS_NAME,
+            "setErr0",
+            "(Ljava/io/PrintStream;)V",
+            system_methods::set_err0,
+        ),
+        (
+            OBJECT_CLASS_NAME,
+            "hashCode",
+            "()I",
+            object_methods::hash_code,
+        ),
+        (
+            OBJECT_CLASS_NAME,
+            "getClass",
+            "()Ljava/lang/Class;",
+            object_methods::get_class,
+        ),
+    ]
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct NativeMethodNameKey {
@@ -117,9 +172,10 @@ pub struct NativeMethodResolver {
 }
 impl NativeMethodResolver {
     pub fn new() -> Self {
-        let mut name_map = HashMap::with_capacity(NATIVE_METHODS.len());
-        let mut handlers = Vec::with_capacity(NATIVE_METHODS.len());
-        for (class, method, desc, handler) in NATIVE_METHODS {
+        let native_methods = get_native_methods();
+        let mut name_map = HashMap::with_capacity(native_methods.len());
+        let mut handlers = Vec::with_capacity(native_methods.len());
+        for (class, method, desc, handler) in native_methods {
             let index = handlers.len();
             handlers.push(handler);
             let name_key = NativeMethodNameKey {

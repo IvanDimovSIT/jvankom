@@ -2,8 +2,6 @@ use crate::{
     class_loader::{ClassLoader, ClassSource},
     jvm::Jvm,
     jvm_heap::JvmHeap,
-    jvm_model::JvmValue,
-    v_table::VTable,
 };
 
 mod bytecode;
@@ -18,27 +16,27 @@ mod jvm_cache;
 mod jvm_heap;
 mod jvm_model;
 mod native_method_resolver;
+mod object_initalisation;
 mod v_table;
 mod verifier;
 
 fn main() {
     let class =
-        verifier::verify_class_file(class_parser::parse("test_classes/ObjectTest.class").unwrap())
+        verifier::verify_class_file(class_parser::parse("test_classes/PrintTest.class").unwrap())
             .unwrap();
     println!("File:\n{class:?}");
 
     let class_loader = ClassLoader::new(vec![
         ClassSource::Jar("java_libraries/rt.jar".to_owned()),
+        ClassSource::Jar("java_libraries/jvankomrt.jar".to_owned()),
         ClassSource::Directory("test_classes/".to_owned()),
     ])
     .unwrap();
     let heap = JvmHeap::new(1000, 1000);
     let mut jvm = Jvm::new(class_loader, heap);
-    let result = jvm.run(
-        "TestString".to_owned(),
-        "testSB".to_owned(), // "testSB".to_owned(),
-        "(I)I".to_owned(),
-        vec![JvmValue::Int(0)],
+    let result = jvm.run_main(
+        "PrintTest".to_owned(),
+        vec!["Hello".to_owned(), "World!".to_owned()],
     );
 
     if let Err(err) = result {
@@ -62,16 +60,13 @@ fn main() {
         return;
     }
 
-    let jvm_value = result.unwrap().unwrap();
-
-    println!("{jvm_value:?}");
     show_cache_storage(&jvm);
 }
 
 fn show_cache_storage(jvm: &Jvm) {
     let (used, total) = jvm.get_cache_storage_efficieny();
     println!(
-        "Storage efficiency: {}/{}, {}%",
+        "JVM cache storage efficiency: {}/{}, {}%",
         used,
         total,
         100.0 * used as f64 / total as f64

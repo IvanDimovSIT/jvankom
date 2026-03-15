@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{num::NonZeroUsize, rc::Rc};
 
 use crate::{
     bytecode::BYTECODE_TABLE,
@@ -9,7 +9,8 @@ use crate::{
     jvm_cache::JvmCache,
     jvm_heap::JvmHeap,
     jvm_model::{
-        FrameReturn, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmThread, JvmValue,
+        FrameReturn, HeapObject, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame,
+        JvmThread, JvmValue, ObjectArray, ObjectArrayType, STRING_CLASS_NAME,
     },
     native_method_resolver::NativeMethodResolver,
 };
@@ -132,7 +133,51 @@ impl Jvm {
         self.threads
     }
 
-    pub fn run(
+    pub fn run_main(&mut self, class_name: String, args: Vec<String>) -> JvmResult<()> {
+        const LIBRARY_CLASS_NAME: &str = "jvankomrt/JVMInit";
+        const LIBRARY_METHOD_NAME: &str = "init";
+        const LIBRARY_METHOD_DESC: &str = "()V";
+        const MAIN_METHOD_NAME: &str = "main";
+        const MAIN_METHOD_DESC: &str = "([Ljava/lang/String;)V";
+        self.run_method(
+            LIBRARY_CLASS_NAME.to_owned(),
+            LIBRARY_METHOD_NAME.to_owned(),
+            LIBRARY_METHOD_DESC.to_owned(),
+            vec![],
+        )?;
+        self.threads.clear();
+        let params = self.prepare_string_args(args)?;
+        self.run_method(
+            class_name,
+            MAIN_METHOD_NAME.to_owned(),
+            MAIN_METHOD_DESC.to_owned(),
+            params,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn run_with_init(
+        &mut self,
+        class_name: String,
+        method_name: String,
+        method_descriptor: String,
+        params: Vec<JvmValue>,
+    ) -> JvmResult<Option<JvmValue>> {
+        const LIBRARY_CLASS_NAME: &str = "jvankomrt/JVMInit";
+        const LIBRARY_METHOD_NAME: &str = "init";
+        const LIBRARY_METHOD_DESC: &str = "()V";
+        self.run_method(
+            LIBRARY_CLASS_NAME.to_owned(),
+            LIBRARY_METHOD_NAME.to_owned(),
+            LIBRARY_METHOD_DESC.to_owned(),
+            vec![],
+        )?;
+        self.threads.clear();
+        self.run_method(class_name, method_name, method_descriptor, params)
+    }
+
+    pub fn run_method(
         &mut self,
         class_name: String,
         method_name: String,
@@ -227,6 +272,7 @@ impl Jvm {
                 }
                 debug_assert!(frame.program_counter < bytecode.code.len());
                 // DEBUG
+                #[cfg(debug_assertions)]
                 frame.debug_print();
 
                 let instruction = bytecode.code[frame.program_counter];
@@ -266,6 +312,33 @@ impl Jvm {
                 (used + u, total + t)
             })
     }
+
+    fn prepare_string_args(&mut self, args: Vec<String>) -> JvmResult<Vec<JvmValue>> {
+        let mut strings = vec![];
+        let string_class = self.class_loader.get(STRING_CLASS_NAME)?;
+        for arg in args {
+            let mut obj = string_class
+                .state
+                .borrow()
+                .default_object
+                .clone()
+                .expect("String needs to be initialised");
+            self.cache
+                .string_pool
+                .initialise_string_fields(&arg, &mut obj, &mut self.heap);
+            let string_ref = self.heap.allocate(obj);
+            strings.push(Some(string_ref));
+        }
+
+        let array = HeapObject::ObjectArray(ObjectArray {
+            array: strings,
+            dimension: NonZeroUsize::new(1).unwrap(),
+            object_array_type: ObjectArrayType::Class(string_class),
+        });
+        let array_ref = self.heap.allocate(array);
+
+        Ok(vec![JvmValue::Reference(Some(array_ref))])
+    }
 }
 
 #[cfg(test)]
@@ -277,6 +350,7 @@ mod tests {
             NEGATIVE_ARRAY_SIZE_EXCEPTION_NAME, NULL_POINTER_EXCEPTION_NAME, OBJECT_CLASS_NAME,
             STRING_CLASS_NAME,
         },
+        native_method_resolver::PRINT_LOG,
     };
 
     use super::*;
@@ -285,7 +359,7 @@ mod tests {
     fn test_sum() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "TestSimple".to_owned(),
                 "sum".to_owned(),
                 "(II)I".to_owned(),
@@ -304,7 +378,7 @@ mod tests {
     fn test_int_array_creation_and_indexing() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "TestSimple".to_owned(),
                 "arrayTest".to_owned(),
                 "(III)I".to_owned(),
@@ -324,7 +398,7 @@ mod tests {
     fn test_int_array_invalid_index() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let _result = jvm
-            .run(
+            .run_method(
                 "TestSimple".to_owned(),
                 "arrayTest".to_owned(),
                 "(III)I".to_owned(),
@@ -338,7 +412,7 @@ mod tests {
     fn test_constants() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "TestSimple".to_owned(),
                 "constants".to_owned(),
                 "(I)I".to_owned(),
@@ -359,7 +433,7 @@ mod tests {
             "test_classes/simpleJar.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "TestSimple".to_owned(),
                 "constants".to_owned(),
                 "(I)I".to_owned(),
@@ -383,7 +457,7 @@ mod tests {
     fn test_method_caching() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "TestStaticMethodCallCache".to_owned(),
                 "mainCall".to_owned(),
                 "(II)I".to_owned(),
@@ -404,7 +478,7 @@ mod tests {
     fn test_parameter_overload() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "ParameterOverloadTest".to_owned(),
                 "mainCall".to_owned(),
                 "(II)I".to_owned(),
@@ -423,7 +497,7 @@ mod tests {
     fn test_integer_math() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "IntegerMathTest".to_owned(),
                 "mainCall".to_owned(),
                 "(II)[I".to_owned(),
@@ -452,7 +526,7 @@ mod tests {
     #[test]
     fn test_integer_math_divide_by_zero() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
-        let result = jvm.run(
+        let result = jvm.run_method(
             "IntegerMathTest".to_owned(),
             "mainCall".to_owned(),
             "(II)[I".to_owned(),
@@ -478,7 +552,7 @@ mod tests {
             "test_classes/CrossCallTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "CrossCall1Test".to_owned(),
                 "callOtherClass".to_owned(),
                 "(I)I".to_owned(),
@@ -504,7 +578,7 @@ mod tests {
             "test_classes/VirtualCallTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "VirtualCall1Test".to_owned(),
                 "mainCallSelf".to_owned(),
                 "(I)[I".to_owned(),
@@ -535,7 +609,7 @@ mod tests {
             "test_classes/VirtualCallTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "VirtualCall1Test".to_owned(),
                 "mainCallOther".to_owned(),
                 "(I)[I".to_owned(),
@@ -566,7 +640,7 @@ mod tests {
             "test_classes/VirtualCallTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "VirtualCall1Test".to_owned(),
                 "mainCallAbstract".to_owned(),
                 "(I)[I".to_owned(),
@@ -597,7 +671,7 @@ mod tests {
             "test_classes/VirtualCallTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "VirtualCall1Test".to_owned(),
                 "mainCallOtherWithPrivate".to_owned(),
                 "(I)[I".to_owned(),
@@ -628,7 +702,7 @@ mod tests {
             "test_classes/NonStaticFieldTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "NonStaticFieldTest1".to_owned(),
                 "mainCall".to_owned(),
                 "(I)[I".to_owned(),
@@ -667,7 +741,7 @@ mod tests {
             "test_classes/ChainFieldInheritanceTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "ChainFieldInheritanceTest".to_owned(),
                 method.into(),
                 "()[I".to_owned(),
@@ -699,7 +773,7 @@ mod tests {
             "test_classes/MixedFieldAccessTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "MixedFieldAccessTest".to_owned(),
                 "runTest".to_owned(),
                 "()[J".to_owned(),
@@ -841,7 +915,7 @@ mod tests {
     fn test_string_substring_helper(start: i32, index: i32, expected: i32) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "TestString".to_owned(),
                 "subStr".to_owned(),
                 "(II)I".to_owned(),
@@ -861,7 +935,7 @@ mod tests {
     fn test_string_string_builder_helper(index: usize, expected: i32) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "TestString".to_owned(),
                 "testSB".to_owned(),
                 "(I)I".to_owned(),
@@ -897,7 +971,7 @@ mod tests {
     fn test_string_concat_helper(char_a: i32, char_b: i32, index: usize) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "TestString".to_owned(),
                 "concat".to_owned(),
                 "(CCI)I".to_owned(),
@@ -940,7 +1014,7 @@ mod tests {
     fn test_string_char_at_helper(index: usize) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "TestString".to_owned(),
                 "main".to_owned(),
                 "(I)I".to_owned(),
@@ -1084,7 +1158,7 @@ mod tests {
     fn test_null_pointer_exception_handled() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "NullPointerExceptionTest".to_owned(),
                 "catchNull".to_owned(),
                 "()I".to_owned(),
@@ -1102,7 +1176,7 @@ mod tests {
     #[test]
     fn test_null_pointer_exception_unhandled() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
-        let result = jvm.run(
+        let result = jvm.run_method(
             "NullPointerExceptionTest".to_owned(),
             "getNullArray".to_owned(),
             "()I".to_owned(),
@@ -1156,7 +1230,7 @@ mod tests {
     fn test_instanceof() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "InstanceofTest".to_owned(),
                 "test".to_owned(),
                 "()[I".to_owned(),
@@ -1235,7 +1309,7 @@ mod tests {
             "test_classes/InterfaceTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "InterfaceTest".to_owned(),
                 method_name.into(),
                 "(I)I".to_owned(),
@@ -1263,7 +1337,7 @@ mod tests {
 
     fn test_array_exceptions_unhandled_helper(size: i32, index: i32, expected: &str) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
-        let result = jvm.run(
+        let result = jvm.run_method(
             "ArrayExceptionsTest".to_owned(),
             "index".to_owned(),
             "(II)I".to_owned(),
@@ -1286,7 +1360,7 @@ mod tests {
     fn test_array_exceptions_handled_helper(size: i32, index: i32, expected: i32) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "ArrayExceptionsTest".to_owned(),
                 "indexCatch".to_owned(),
                 "(II)I".to_owned(),
@@ -1356,12 +1430,53 @@ mod tests {
         test_cache_interface_helper(100);
     }
 
+    #[test]
+    fn test_print_hello_world() {
+        test_print_helper("testPrintSimple", "Hello, World!\n");
+    }
+
+    #[test]
+    fn test_print_int() {
+        test_print_helper("testPrintInteger", "67\n");
+    }
+
+    #[test]
+    fn test_print_float() {
+        test_print_helper("testPrintFloat", "0.2\n0.1");
+    }
+
+    #[test]
+    fn test_run_main() {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
+        let args = vec!["Hello".to_owned(), "World".to_owned(), "!!!".to_owned()];
+        jvm.run_main("PrintTest".to_owned(), args).unwrap();
+
+        assert_eq!("Hello\nWorld\n!!!\n", *PRINT_LOG.lock().unwrap());
+        PRINT_LOG.lock().unwrap().clear();
+    }
+
+    fn test_print_helper(method: impl Into<String>, expected_print: &str) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
+        let result = jvm
+            .run_with_init(
+                "PrintTest".to_owned(),
+                method.into(),
+                "()V".to_owned(),
+                vec![],
+            )
+            .unwrap();
+
+        assert!(result.is_none());
+        assert_eq!(expected_print, *PRINT_LOG.lock().unwrap());
+        PRINT_LOG.lock().unwrap().clear();
+    }
+
     fn test_cache_interface_helper(count: usize) {
         let mut jvm = create_jvm(vec![ClassSource::Jar(
             "test_classes/CacheTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "CacheTest".to_owned(),
                 "testInterface".to_owned(),
                 "(III)Z".to_owned(),
@@ -1392,7 +1507,7 @@ mod tests {
             "test_classes/CacheTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "CacheTest".to_owned(),
                 "testVirtual".to_owned(),
                 "(III)Z".to_owned(),
@@ -1423,7 +1538,7 @@ mod tests {
             "test_classes/CacheTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "CacheTest".to_owned(),
                 "testStatic".to_owned(),
                 "(III)Z".to_owned(),
@@ -1454,7 +1569,7 @@ mod tests {
             "test_classes/ExceptionsTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "ExceptionsTest".to_owned(),
                 "multipleThrows".to_owned(),
                 "(I)I".to_owned(),
@@ -1473,7 +1588,7 @@ mod tests {
         let mut jvm = create_jvm(vec![ClassSource::Jar(
             "test_classes/ExceptionsTest.jar".to_owned(),
         )]);
-        let result = jvm.run(
+        let result = jvm.run_method(
             "ExceptionsTest".to_owned(),
             method.into(),
             "(I)I".to_owned(),
@@ -1498,7 +1613,7 @@ mod tests {
             "test_classes/ExceptionsTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "ExceptionsTest".to_owned(),
                 method.into(),
                 "(I)I".to_owned(),
@@ -1516,7 +1631,7 @@ mod tests {
     fn test_array_length_helper(n: i32) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "ArrayLengthTest".to_owned(),
                 "getLength".to_owned(),
                 "(I)I".to_owned(),
@@ -1536,7 +1651,7 @@ mod tests {
     fn test_comparisons_loop_helper(n: i32) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "ComparisonsTest".to_owned(),
                 "iter".to_owned(),
                 "(I)[I".to_owned(),
@@ -1568,7 +1683,7 @@ mod tests {
     fn test_comparisons_helper(a: i32, b: i32, c: i32, expected_outputs: &[i32]) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "ComparisonsTest".to_owned(),
                 "comp".to_owned(),
                 "(III)[I".to_owned(),
@@ -1607,7 +1722,7 @@ mod tests {
         }
         .to_owned();
         assert!(
-            jvm.run("GCTest".to_owned(), method, "()V".to_owned(), vec![],)
+            jvm.run_method("GCTest".to_owned(), method, "()V".to_owned(), vec![],)
                 .unwrap()
                 .is_none()
         );
@@ -1626,7 +1741,7 @@ mod tests {
             "test_classes/StaticFieldTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "StaticFieldTest".to_owned(),
                 method.into(),
                 "(II)[I".to_owned(),
@@ -1656,7 +1771,7 @@ mod tests {
             "test_classes/FieldShadowingTest.jar".to_owned(),
         )]);
         let result = jvm
-            .run(
+            .run_method(
                 "FieldShadowingTest".to_owned(),
                 method.into(),
                 "()[I".to_owned(),
@@ -1690,7 +1805,7 @@ mod tests {
     ) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes".to_owned())]);
         let result = jvm
-            .run(
+            .run_method(
                 "TestMethodCall".to_owned(),
                 "mainCall".to_owned(),
                 "(II)I".to_owned(),
@@ -1707,6 +1822,7 @@ mod tests {
 
     fn create_jvm(mut contexts: Vec<ClassSource>) -> Jvm {
         contexts.push(ClassSource::Jar("java_libraries/rt.jar".to_owned()));
+        contexts.push(ClassSource::Jar("java_libraries/jvankomrt.jar".to_owned()));
         let class_loader = ClassLoader::new(contexts).unwrap();
         let heap = JvmHeap::new(2, 100);
         Jvm::new(class_loader, heap)

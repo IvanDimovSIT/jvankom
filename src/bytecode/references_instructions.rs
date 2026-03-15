@@ -6,7 +6,7 @@ use crate::{
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     initialise_class_and_rewind,
     jvm_model::{DescriptorType, JvmClass, ObjectArray, ObjectArrayType},
-    throw_negative_array_size_exception, throw_null_pointer_exception,
+    throw_class_cast_exception, throw_negative_array_size_exception, throw_null_pointer_exception,
 };
 
 use super::*;
@@ -210,7 +210,7 @@ pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
     let exception_obj = context.heap.get(exception_ref);
     let exception_class = match exception_obj {
         HeapObject::Object { class, fields: _ } => class,
-        _ => todo!("Throw exception - not an exception"),
+        _ => return Err(JvmError::ExpectedThrowable.bx()),
     };
     let throwable_interface = context.class_loader.get_throwable()?;
     if !JvmClass::is_sublcass_of(&throwable_interface, exception_class) {
@@ -268,8 +268,89 @@ pub fn instance_of_instruction(context: JvmContext) -> JvmResult<()> {
     let object = context.heap.get(object_ref);
     let instance_of_result =
         check_instance_of(&type_info.object_or_array, type_info.dimension, object)?;
-    frame.operand_stack.push(JvmValue::Int(instance_of_result));
 
+    let int = if instance_of_result { 1 } else { 0 };
+    frame.operand_stack.push(JvmValue::Int(int));
+
+    Ok(())
+}
+
+pub fn check_cast_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 3;
+    let frame = context.current_thread.top_frame();
+    let unvalidated_cp_index = read_u16_from_bytecode(frame);
+    let type_info = if let Some(type_info) = frame
+        .class
+        .state
+        .borrow()
+        .cache
+        .get_type(unvalidated_cp_index)
+    {
+        type_info.clone()
+    } else {
+        let class_index = validate_cp_index(unvalidated_cp_index)?;
+        let class_name = read_class_type(frame, class_index)?;
+
+        let (expected_class, dimension_if_array) =
+            determine_type_and_dimension_if_array(class_name, context.class_loader)?;
+
+        let type_info = TypeInfo {
+            object_or_array: expected_class,
+            dimension: dimension_if_array,
+        };
+
+        frame.class.state.borrow_mut().cache.register(
+            unvalidated_cp_index,
+            Rc::new(CacheEntry::Type(type_info.clone())),
+        );
+
+        if let ObjectArrayType::Class(jvm_class) = &type_info.object_or_array
+            && !jvm_class.state.borrow().is_initialised
+        {
+            initialise_class_and_rewind!(frame, context, jvm_class, INSTRUCTION_SIZE);
+        }
+
+        type_info
+    };
+    let object_ref = if let Some(reference) = pop_reference(frame)? {
+        reference
+    } else {
+        frame.operand_stack.push(JvmValue::Reference(None));
+        return Ok(());
+    };
+    let object = context.heap.get(object_ref);
+    let instance_of_result =
+        check_instance_of(&type_info.object_or_array, type_info.dimension, object)?;
+    if !instance_of_result {
+        throw_class_cast_exception!(frame, context, INSTRUCTION_SIZE);
+    }
+
+    frame
+        .operand_stack
+        .push(JvmValue::Reference(Some(object_ref)));
+
+    Ok(())
+}
+
+pub fn monitor_enter_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 1;
+    let frame = context.current_thread.top_frame();
+    let obj = pop_reference(frame)?;
+    if obj.is_none() {
+        throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
+    }
+    // TODO: implement monitor_enter_instruction
+    Ok(())
+}
+
+pub fn monitor_exit_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 1;
+    let frame = context.current_thread.top_frame();
+    let obj = pop_reference(frame)?;
+    if obj.is_none() {
+        throw_null_pointer_exception!(frame, context, INSTRUCTION_SIZE);
+    }
+    // TODO: implement monitor_exit_instruction
     Ok(())
 }
 
@@ -326,7 +407,7 @@ fn check_instance_of(
     expected_type: &ObjectArrayType,
     dimension_if_array: usize,
     object: &HeapObject,
-) -> JvmResult<i32> {
+) -> JvmResult<bool> {
     let matches = match object {
         HeapObject::Object { class, fields: _ } => {
             check_non_array_instance_of(class, expected_type, dimension_if_array)
@@ -360,9 +441,7 @@ fn check_instance_of(
         }
     };
 
-    let int = if matches { 1 } else { 0 };
-
-    Ok(int)
+    Ok(matches)
 }
 
 fn check_object_array_instance_of(

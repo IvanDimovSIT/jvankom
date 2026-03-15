@@ -45,18 +45,25 @@ pub const ICONST_5: u8 = 0x8;
 pub const BIPUSH: u8 = 0x10;
 pub const SIPUSH: u8 = 0x11;
 pub const LDC: u8 = 0x12;
+pub const LDC_W: u8 = 0x13;
 pub const LDC2_W: u8 = 0x14;
 pub const ILOAD: u8 = 0x15;
+pub const FLOAD: u8 = 0x17;
 pub const ALOAD: u8 = 0x19;
 pub const ILOAD_0: u8 = 0x1a;
 pub const ILOAD_1: u8 = 0x1b;
 pub const ILOAD_2: u8 = 0x1c;
 pub const ILOAD_3: u8 = 0x1d;
+pub const FLOAD_0: u8 = 0x22;
+pub const FLOAD_1: u8 = 0x23;
+pub const FLOAD_2: u8 = 0x24;
+pub const FLOAD_3: u8 = 0x25;
 pub const ALOAD_0: u8 = 0x2a;
 pub const ALOAD_1: u8 = 0x2b;
 pub const ALOAD_2: u8 = 0x2c;
 pub const ALOAD_3: u8 = 0x2d;
 pub const IALOAD: u8 = 0x2e;
+pub const AALOAD: u8 = 0x32;
 pub const CALOAD: u8 = 0x34;
 pub const ISTORE: u8 = 0x36;
 pub const ASTORE: u8 = 0x3a;
@@ -82,7 +89,12 @@ pub const IMUL: u8 = 0x68;
 pub const IDIV: u8 = 0x6c;
 pub const IREM: u8 = 0x70;
 pub const INEG: u8 = 0x74;
+pub const ISHL: u8 = 0x78;
 pub const LSHL: u8 = 0x79;
+pub const IUSHR: u8 = 0x7c;
+pub const IAND: u8 = 0x7e;
+pub const IOR: u8 = 0x80;
+pub const IXOR: u8 = 0x82;
 pub const LAND: u8 = 0x7f;
 pub const IINC: u8 = 0x84;
 pub const I2L: u8 = 0x85;
@@ -98,6 +110,8 @@ pub const IF_ICMPLT: u8 = 0xa1;
 pub const IF_ICMPGE: u8 = 0xa2;
 pub const IF_ICMPGT: u8 = 0xa3;
 pub const IF_ICMPLE: u8 = 0xa4;
+pub const IF_ACMPEQ: u8 = 0xa5;
+pub const IF_ACMPNE: u8 = 0xa6;
 pub const GOTO: u8 = 0xa7;
 pub const IRETURN: u8 = 0xac;
 pub const DRETURN: u8 = 0xaf;
@@ -116,7 +130,10 @@ pub const NEWARRAY: u8 = 0xbc;
 pub const ANEWARRAY: u8 = 0xbd;
 pub const ARRAYLENGTH: u8 = 0xbe;
 pub const ATHROW: u8 = 0xbf;
+pub const CHECKCAST: u8 = 0xc0;
 pub const INSTANCEOF: u8 = 0xc1;
+pub const MONITORENTER: u8 = 0xc2;
+pub const MONITOREXIT: u8 = 0xc3;
 pub const IFNULL: u8 = 0xc6;
 pub const IFNONNULL: u8 = 0xc7;
 
@@ -143,18 +160,25 @@ impl BytecodeTable {
             (BIPUSH, bipush_instruction),
             (SIPUSH, sipush_instruction),
             (LDC, ldc_instruction),
+            (LDC_W, ldc_w_instruction),
             (LDC2_W, ldc2w_instruction),
             (ILOAD, integer_load_n),
+            (FLOAD, float_load_n),
             (ALOAD, reference_load_n),
             (ILOAD_0, integer_load::<0>),
             (ILOAD_1, integer_load::<1>),
             (ILOAD_2, integer_load::<2>),
             (ILOAD_3, integer_load::<3>),
+            (FLOAD_0, float_load::<0>),
+            (FLOAD_1, float_load::<1>),
+            (FLOAD_2, float_load::<2>),
+            (FLOAD_3, float_load::<3>),
             (ALOAD_0, reference_load_instruction::<0>),
             (ALOAD_1, reference_load_instruction::<1>),
             (ALOAD_2, reference_load_instruction::<2>),
             (ALOAD_3, reference_load_instruction::<3>),
             (IALOAD, load_integer_array_instruction),
+            (AALOAD, load_reference_array_instruction),
             (CALOAD, load_character_array_instruction),
             (ISTORE, store_integer_n_instruction),
             (ASTORE, store_reference_n_instruction),
@@ -163,7 +187,12 @@ impl BytecodeTable {
             (ISUB, integer_subtract_instruction),
             (IMUL, integer_muliply_instruction),
             (INEG, integer_negate_instruction),
+            (ISHL, integer_shift_left_instruction),
             (LSHL, shift_left_long_instruction),
+            (IUSHR, integer_logical_shift_right_instruction),
+            (IAND, integer_and_instruction),
+            (IOR, integer_or_instruction),
+            (IXOR, integer_xor_instruction),
             (LAND, long_and_instruction),
             (IDIV, integer_divide_instruction),
             (IREM, integer_remainder_instruction),
@@ -196,6 +225,8 @@ impl BytecodeTable {
             (IF_ICMPGE, if_compare_greater_than_or_equals_instruction),
             (IF_ICMPGT, if_compare_greater_than_instruction),
             (IF_ICMPLE, if_compare_less_than_or_equals_instruction),
+            (IF_ACMPEQ, if_reference_equals_instruction),
+            (IF_ACMPNE, if_reference_not_equals_instruction),
             (GOTO, goto_instruction),
             (IRETURN, integer_return_instruction),
             (DRETURN, double_return_instruction),
@@ -214,7 +245,10 @@ impl BytecodeTable {
             (ANEWARRAY, new_object_array_instruction),
             (ARRAYLENGTH, array_length_instruction),
             (ATHROW, throw_exception_instruction),
+            (CHECKCAST, check_cast_instruction),
             (INSTANCEOF, instance_of_instruction),
+            (MONITORENTER, monitor_enter_instruction),
+            (MONITOREXIT, monitor_exit_instruction),
             (IFNULL, if_null_instruction),
             (IFNONNULL, if_not_null_instruction),
         ];
@@ -258,8 +292,22 @@ fn handle_unrecognised_instruction(context: JvmContext) -> JvmResult<()> {
 macro_rules! initialise_class_and_rewind {
     ($frame:expr, $context:expr, $jvm_class:expr, $size:expr) => {{
         const _CHECK_SIZE: () = assert!($size > 0);
+        $frame.program_counter -= $size;
+        return $crate::jvm::Jvm::initialise_class(
+            $context.current_thread,
+            $jvm_class,
+            $context.class_loader,
+            $jvm_class.class_file.get_class_name(),
+        );
+    }};
+}
 
-        $frame.program_counter -= $size; // rewind
+/// initialises the class and rewinds the instruction, where $size is the runtime size of the instruction
+#[macro_export]
+macro_rules! initialise_class_and_rewind_runtime {
+    ($frame:expr, $context:expr, $jvm_class:expr, $size:expr) => {{
+        debug_assert!($size > 0);
+        $frame.program_counter -= $size;
         return $crate::jvm::Jvm::initialise_class(
             $context.current_thread,
             $jvm_class,
@@ -315,7 +363,7 @@ fn read_u16_from_bytecode(frame: &mut JvmStackFrame) -> u16 {
 
     let index_byte2 = bytecode.code[frame.program_counter] as u16;
     frame.program_counter += 1;
-    debug_assert!(frame.program_counter < bytecode.code.len());
+    debug_assert!(frame.program_counter <= bytecode.code.len());
 
     (index_byte1 << 8) | index_byte2
 }

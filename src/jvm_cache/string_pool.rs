@@ -40,7 +40,7 @@ impl StringPool {
         }
     }
 
-    fn find_value_field(string_state: &ClassState) -> usize {
+    pub fn find_value_field(string_state: &ClassState) -> usize {
         if let Some(fields) = &string_state.non_static_fields {
             for (i, field) in fields.iter().enumerate() {
                 if field.name == VALUE_FIELD_NAME {

@@ -77,12 +77,31 @@ pub fn integer_load<const INDEX: usize>(context: JvmContext) -> JvmResult<()> {
     generic_load::<INDEX, _, _>(context, expect_int)
 }
 
+pub fn float_load_n(context: JvmContext) -> JvmResult<()> {
+    generic_load_n(context, expect_float)
+}
+
+pub fn float_load<const INDEX: usize>(context: JvmContext) -> JvmResult<()> {
+    generic_load::<INDEX, _, _>(context, expect_float)
+}
+
 pub fn reference_load_instruction<const INDEX: usize>(context: JvmContext) -> JvmResult<()> {
     generic_load::<INDEX, _, _>(context, expect_reference)
 }
 
 pub fn reference_load_n(context: JvmContext) -> JvmResult<()> {
     generic_load_n(context, expect_reference)
+}
+
+pub fn load_reference_array_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_load_array_instruction(
+        context,
+        |obj| match obj {
+            HeapObject::ObjectArray(arr) => Ok(&mut arr.array),
+            _ => Err(JvmError::IncompatibleArrayType.bx()),
+        },
+        JvmValue::Reference,
+    )
 }
 
 pub fn load_integer_array_instruction(context: JvmContext) -> JvmResult<()> {

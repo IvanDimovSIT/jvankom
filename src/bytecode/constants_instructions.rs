@@ -1,10 +1,8 @@
-use std::rc::Rc;
-
 use crate::{
     class_file::ConstantValue,
-    field_initialisation::{determine_non_static_field_types, initialise_object_fields},
-    initialise_class_and_rewind,
-    jvm_model::{CLASS_CLASS_NAME, JvmClass, STRING_CLASS_NAME},
+    initialise_class_and_rewind_runtime,
+    jvm_model::{CLASS_CLASS_NAME, STRING_CLASS_NAME},
+    object_initalisation::{create_class_object, create_string_object},
 };
 
 use super::*;
@@ -66,9 +64,29 @@ pub fn ldc2w_instruction(context: JvmContext) -> JvmResult<()> {
 
 pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
     const INSTRUCTION_SIZE: usize = 2;
+    generic_ldc_instruction::<INSTRUCTION_SIZE, _>(context, |frame| {
+        let bytecode_value = read_u8_from_bytecode(frame) as u16;
+        validate_cp_index(bytecode_value)
+    })
+}
+
+pub fn ldc_w_instruction(context: JvmContext) -> JvmResult<()> {
+    const INSTRUCTION_SIZE: usize = 3;
+    generic_ldc_instruction::<INSTRUCTION_SIZE, _>(context, |frame| {
+        let bytecode_value = read_u16_from_bytecode(frame);
+        validate_cp_index(bytecode_value)
+    })
+}
+
+fn generic_ldc_instruction<const INSTRUCTION_SIZE: usize, F>(
+    context: JvmContext,
+    read_index_fn: F,
+) -> JvmResult<()>
+where
+    F: FnOnce(&mut JvmStackFrame) -> JvmResult<NonZeroUsize>,
+{
     let frame = context.current_thread.top_frame();
-    let bytecode_value = read_u8_from_bytecode(frame) as u16;
-    let constant_index = validate_cp_index(bytecode_value)?;
+    let constant_index = read_index_fn(frame)?;
 
     let value = match frame.class.class_file.constant_pool.get(constant_index) {
         ConstantValue::Int(int) => JvmValue::Int(*int),
@@ -77,7 +95,12 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
             let class_class = context.class_loader.get(CLASS_CLASS_NAME)?;
 
             if !class_class.state.borrow().is_initialised {
-                initialise_class_and_rewind!(frame, context, &class_class, INSTRUCTION_SIZE);
+                initialise_class_and_rewind_runtime!(
+                    frame,
+                    context,
+                    &class_class,
+                    INSTRUCTION_SIZE
+                );
             }
 
             let class_name = frame
@@ -96,7 +119,12 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
 
             // initialise class and rewind
             if !string_class.state.borrow().is_initialised {
-                initialise_class_and_rewind!(frame, context, &string_class, INSTRUCTION_SIZE);
+                initialise_class_and_rewind_runtime!(
+                    frame,
+                    context,
+                    &string_class,
+                    INSTRUCTION_SIZE
+                );
             }
 
             let mut string_obj = create_string_object(&string_class)?;
@@ -134,38 +162,4 @@ pub fn ldc_instruction(context: JvmContext) -> JvmResult<()> {
     frame.operand_stack.push(value);
 
     Ok(())
-}
-
-fn create_string_object(string_class: &Rc<JvmClass>) -> JvmResult<HeapObject> {
-    debug_assert_eq!(STRING_CLASS_NAME, string_class.class_file.get_class_name());
-
-    if let Some(str) = string_class.state.borrow().default_object.clone() {
-        Ok(str)
-    } else {
-        let non_static_field_types = determine_non_static_field_types(string_class)?;
-        let str = initialise_object_fields(string_class.clone(), &non_static_field_types);
-        let mut state = string_class.state.borrow_mut();
-        state.non_static_fields = Some(non_static_field_types);
-        state.default_object = Some(str.clone());
-
-        Ok(str)
-    }
-}
-
-fn create_class_object(class_class: &Rc<JvmClass>, _class_name: &str) -> JvmResult<HeapObject> {
-    debug_assert_eq!(CLASS_CLASS_NAME, class_class.class_file.get_class_name());
-
-    if let Some(cl) = class_class.state.borrow().default_object.clone() {
-        Ok(cl)
-    } else {
-        let non_static_field_types = determine_non_static_field_types(class_class)?;
-        let str = initialise_object_fields(class_class.clone(), &non_static_field_types);
-        let mut state = class_class.state.borrow_mut();
-        state.non_static_fields = Some(non_static_field_types);
-        state.default_object = Some(str.clone());
-
-        Ok(str)
-    }
-
-    // TODO: initilaise Class object
 }
