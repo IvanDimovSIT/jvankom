@@ -2,8 +2,6 @@ use crate::{
     class_loader::{ClassLoader, ClassSource},
     jvm::Jvm,
     jvm_heap::JvmHeap,
-    jvm_model::JvmValue,
-    v_table::VTable,
 };
 
 mod bytecode;

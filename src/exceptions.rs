@@ -109,6 +109,22 @@ macro_rules! throw_illegal_access_error {
     }};
 }
 
+///  throws an java/lang/ClassCastException, $size is the size of the instruction
+#[macro_export]
+macro_rules! throw_class_cast_exception {
+    ($frame:expr, $context:expr, $size:expr) => {{
+        const _CHECK_SIZE: () = assert!($size > 0);
+
+        $frame.program_counter -= $size - 1; // rewind
+        return $crate::exceptions::throw_jvm_exception(
+            $context.current_thread,
+            $context.heap,
+            $context.class_loader,
+            $crate::jvm_model::CLASS_CAST_EXCEPTION_NAME,
+        );
+    }};
+}
+
 /// handles exceptions - the PC must not include increments from multi-byte instructions
 pub fn handle_exception(
     thread: &mut JvmThread,

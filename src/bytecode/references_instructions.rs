@@ -6,7 +6,7 @@ use crate::{
     field_initialisation::{determine_non_static_field_types, initialise_object_fields},
     initialise_class_and_rewind,
     jvm_model::{DescriptorType, JvmClass, ObjectArray, ObjectArrayType},
-    throw_negative_array_size_exception, throw_null_pointer_exception,
+    throw_class_cast_exception, throw_negative_array_size_exception, throw_null_pointer_exception,
 };
 
 use super::*;
@@ -210,7 +210,7 @@ pub fn throw_exception_instruction(context: JvmContext) -> JvmResult<()> {
     let exception_obj = context.heap.get(exception_ref);
     let exception_class = match exception_obj {
         HeapObject::Object { class, fields: _ } => class,
-        _ => todo!("Throw exception - not an exception"),
+        _ => return Err(JvmError::ExpectedThrowable.bx()),
     };
     let throwable_interface = context.class_loader.get_throwable()?;
     if !JvmClass::is_sublcass_of(&throwable_interface, exception_class) {
@@ -322,7 +322,7 @@ pub fn check_cast_instruction(context: JvmContext) -> JvmResult<()> {
     let instance_of_result =
         check_instance_of(&type_info.object_or_array, type_info.dimension, object)?;
     if !instance_of_result {
-        todo!("Throw java/lang/ClassCastException")
+        throw_class_cast_exception!(frame, context, INSTRUCTION_SIZE);
     }
 
     frame
