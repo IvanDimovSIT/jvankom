@@ -60,6 +60,7 @@ impl JvmHeap {
     pub fn perform_gc<'a>(
         &mut self,
         threads: &[&JvmThread],
+        strings_in_string_pool: impl Iterator<Item = NonZeroUsize>,
         loaded_classes: impl Iterator<Item = &'a Rc<JvmClass>>,
     ) {
         self.allocations_counter = 0;
@@ -71,6 +72,7 @@ impl JvmHeap {
         Self::find_inital_reachable(
             threads,
             loaded_classes,
+            strings_in_string_pool,
             &mut reachable_objects,
             &mut object_refs,
         );
@@ -81,6 +83,7 @@ impl JvmHeap {
     fn find_inital_reachable<'a>(
         threads: &[&JvmThread],
         loaded_classes: impl Iterator<Item = &'a Rc<JvmClass>>,
+        strings_in_string_pool: impl Iterator<Item = NonZeroUsize>,
         reachable_objects: &mut [bool],
         object_refs: &mut Vec<NonZeroUsize>,
     ) {
@@ -89,6 +92,13 @@ impl JvmHeap {
                 for field in static_fields {
                     Self::mark_reachable_if_ref(field.value, reachable_objects, object_refs);
                 }
+            }
+        }
+
+        for string_ref in strings_in_string_pool {
+            if !reachable_objects[string_ref.get()] {
+                object_refs.push(string_ref);
+                reachable_objects[string_ref.get()] = true;
             }
         }
 
@@ -195,7 +205,7 @@ mod tests {
         heap.allocate(get_mock_obj(&mut class_loader, None, None));
         assert_eq!(3, heap.get_allocated_count());
 
-        heap.perform_gc(&[], std::iter::empty());
+        heap.perform_gc(&[], std::iter::empty(), std::iter::empty());
 
         assert_eq!(0, heap.get_allocated_count());
     }
@@ -211,7 +221,7 @@ mod tests {
         assert_eq!(3, heap.get_allocated_count());
 
         let t = mock_thread(&mut class_loader, Some(r3));
-        heap.perform_gc(&[&t], std::iter::empty());
+        heap.perform_gc(&[&t], std::iter::empty(), std::iter::empty());
 
         assert_eq!(3, heap.get_allocated_count());
     }
@@ -225,7 +235,7 @@ mod tests {
         heap.allocate(get_mock_obj(&mut class_loader, None, None));
         assert!(heap.should_gc);
 
-        heap.perform_gc(&[], std::iter::empty());
+        heap.perform_gc(&[], std::iter::empty(), std::iter::empty());
 
         assert!(!heap.should_gc);
     }
@@ -240,7 +250,7 @@ mod tests {
         heap.allocate(get_mock_obj(&mut class_loader, None, None));
         let heap_len_before = heap.heap.len();
 
-        heap.perform_gc(&[], std::iter::empty());
+        heap.perform_gc(&[], std::iter::empty(), std::iter::empty());
 
         heap.allocate(get_mock_obj(&mut class_loader, None, None));
         heap.allocate(get_mock_obj(&mut class_loader, None, None));
@@ -259,7 +269,7 @@ mod tests {
         let arr = heap.allocate(get_mock_arr(&mut class_loader, Some(r1), Some(r2)));
 
         let t = mock_thread(&mut class_loader, Some(arr));
-        heap.perform_gc(&[&t], std::iter::empty());
+        heap.perform_gc(&[&t], std::iter::empty(), std::iter::empty());
 
         assert_eq!(3, heap.get_allocated_count());
     }
@@ -284,7 +294,7 @@ mod tests {
         let r4 = heap.allocate(get_mock_obj(&mut class_loader, Some(r3), None));
 
         let thread = mock_thread(&mut class_loader, Some(r4));
-        heap.perform_gc(&[&thread], std::iter::empty());
+        heap.perform_gc(&[&thread], std::iter::empty(), std::iter::empty());
 
         assert_eq!(2, heap.get_allocated_count());
     }

@@ -91,6 +91,7 @@ pub const IREM: u8 = 0x70;
 pub const INEG: u8 = 0x74;
 pub const ISHL: u8 = 0x78;
 pub const LSHL: u8 = 0x79;
+pub const ISHR: u8 = 0x7a;
 pub const IUSHR: u8 = 0x7c;
 pub const IAND: u8 = 0x7e;
 pub const IOR: u8 = 0x80;
@@ -189,6 +190,7 @@ impl BytecodeTable {
             (INEG, integer_negate_instruction),
             (ISHL, integer_shift_left_instruction),
             (LSHL, shift_left_long_instruction),
+            (ISHR, integer_shift_right_instruction),
             (IUSHR, integer_logical_shift_right_instruction),
             (IAND, integer_and_instruction),
             (IOR, integer_or_instruction),

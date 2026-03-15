@@ -30,6 +30,7 @@ pub enum CacheEntry {
     Type(TypeInfo),
     StaticFieldAccess(FieldAccessInfo),
     NonStaticFieldAccess(FieldAccessInfo),
+    StringPoolRef(NonZeroUsize),
 }
 
 /// class specific runtime cached information
@@ -161,6 +162,21 @@ impl ClassCache {
                 }
 
                 Some(info)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn get_string_pool_ref(&self, index: u16) -> Option<NonZeroUsize> {
+        let entry = self.get_entry(index)?;
+        match entry.as_ref() {
+            CacheEntry::StringPoolRef(string_ref) => {
+                #[cfg(debug_assertions)]
+                {
+                    self.cache_hits.set(self.cache_hits.get() + 1);
+                }
+
+                Some(*string_ref)
             }
             _ => None,
         }

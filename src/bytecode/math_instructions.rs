@@ -58,7 +58,13 @@ pub fn integer_logical_shift_right_instruction(context: JvmContext) -> JvmResult
 
 pub fn integer_shift_left_instruction(context: JvmContext) -> JvmResult<()> {
     generic_shift_instruction(context, pop_int, |a, b| {
-        JvmValue::Int(a << (b & 0b111111) as u32)
+        JvmValue::Int(a << (b & 0b11111) as u32)
+    })
+}
+
+pub fn integer_shift_right_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_shift_instruction(context, pop_int, |a, b| {
+        JvmValue::Int(a >> (b & 0b11111) as u32)
     })
 }
 

@@ -1,7 +1,12 @@
+use std::rc::Rc;
+
 use crate::{
+    class_cache::CacheEntry,
     class_file::ConstantValue,
     initialise_class_and_rewind_runtime,
-    jvm_model::{CLASS_CLASS_NAME, STRING_CLASS_NAME},
+    jvm_cache::string_pool::{self, StringPool},
+    jvm_heap::JvmHeap,
+    jvm_model::{CLASS_CLASS_NAME, JvmClass, STRING_CLASS_NAME},
     object_initalisation::{create_class_object, create_string_object},
 };
 
@@ -115,33 +120,36 @@ where
             JvmValue::Reference(Some(class_obj_ref))
         }
         ConstantValue::String { utf8_index } => {
-            let string_class = context.class_loader.get(STRING_CLASS_NAME)?;
-
-            // initialise class and rewind
-            if !string_class.state.borrow().is_initialised {
-                initialise_class_and_rewind_runtime!(
-                    frame,
-                    context,
-                    &string_class,
-                    INSTRUCTION_SIZE
-                );
-            }
-
-            let mut string_obj = create_string_object(&string_class)?;
-            let text = frame
+            if let Some(string_reference) = frame
                 .class
-                .class_file
-                .constant_pool
-                .expect_utf8(*utf8_index);
-
-            context
+                .state
+                .borrow()
                 .cache
-                .string_pool
-                .initialise_string_fields(text, &mut string_obj, context.heap);
+                .get_string_pool_ref(constant_index.get() as u16)
+            {
+                JvmValue::Reference(Some(string_reference))
+            } else {
+                let string_class = context.class_loader.get(STRING_CLASS_NAME)?;
 
-            let reference = context.heap.allocate(string_obj);
+                // initialise class and rewind
+                if !string_class.state.borrow().is_initialised {
+                    initialise_class_and_rewind_runtime!(
+                        frame,
+                        context,
+                        &string_class,
+                        INSTRUCTION_SIZE
+                    );
+                }
 
-            JvmValue::Reference(Some(reference))
+                create_string_from_constant(
+                    frame,
+                    &mut context.cache.string_pool,
+                    context.heap,
+                    *utf8_index,
+                    constant_index.get() as u16,
+                    &string_class,
+                )?
+            }
         }
         ConstantValue::MethodRef {
             class_index,
@@ -162,4 +170,34 @@ where
     frame.operand_stack.push(value);
 
     Ok(())
+}
+
+fn create_string_from_constant(
+    frame: &mut JvmStackFrame,
+    string_pool: &mut StringPool,
+    heap: &mut JvmHeap,
+    utf8_index: NonZeroUsize,
+    constant_index: u16,
+    string_class: &Rc<JvmClass>,
+) -> JvmResult<JvmValue> {
+    let text = frame.class.class_file.constant_pool.expect_utf8(utf8_index);
+    let string_ref = if let Some(string_ref) = string_pool.find_string(text) {
+        string_ref
+    } else {
+        let mut string_obj = create_string_object(string_class)?;
+        string_pool.initialise_string_fields(text, &mut string_obj, heap);
+        let reference = heap.allocate(string_obj);
+        string_pool.register(text, reference);
+
+        reference
+    };
+    let entry = Rc::new(CacheEntry::StringPoolRef(string_ref));
+    frame
+        .class
+        .state
+        .borrow_mut()
+        .cache
+        .register(constant_index, entry);
+
+    Ok(JvmValue::Reference(Some(string_ref)))
 }

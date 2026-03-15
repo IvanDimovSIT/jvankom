@@ -295,6 +295,7 @@ impl Jvm {
             if self.heap.should_gc {
                 self.heap.perform_gc(
                     &[current_thread],
+                    self.cache.string_pool.get_string_references(),
                     self.class_loader.get_all_loaded_classes(),
                 );
             }
@@ -1469,6 +1470,37 @@ mod tests {
         assert!(result.is_none());
         assert_eq!(expected_print, *PRINT_LOG.lock().unwrap());
         PRINT_LOG.lock().unwrap().clear();
+    }
+
+    #[test]
+    fn test_string_pool_once() {
+        test_string_pool_helper(1);
+    }
+
+    #[test]
+    fn test_string_pool_many() {
+        test_string_pool_helper(20);
+    }
+
+    fn test_string_pool_helper(count: i32) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
+        let result = jvm
+            .run_method(
+                "StringPoolTest".to_owned(),
+                "test".to_owned(),
+                "(I)I".to_owned(),
+                vec![JvmValue::Int(count)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => assert_eq!(4 * count, int),
+            _ => panic!("expected int"),
+        }
+        let test_class = jvm.class_loader.get("StringPoolTest").unwrap();
+        let hits = test_class.state.borrow().cache.get_cache_hits();
+        assert_eq!((count * 2 - 1) as usize, hits);
     }
 
     fn test_cache_interface_helper(count: usize) {

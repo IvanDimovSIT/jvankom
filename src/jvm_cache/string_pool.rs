@@ -1,3 +1,5 @@
+use std::{collections::HashMap, num::NonZeroUsize};
+
 use crate::{
     jvm_heap::JvmHeap,
     jvm_model::{ClassState, DescriptorType, HeapObject, JvmValue, STRING_CLASS_NAME},
@@ -9,12 +11,27 @@ const VALUE_FIELD_NAME: &str = "value";
 #[derive(Debug)]
 pub struct StringPool {
     string_value_index: Option<usize>,
+    string_references: HashMap<String, NonZeroUsize>,
 }
 impl StringPool {
     pub fn new() -> Self {
         Self {
             string_value_index: None,
+            string_references: HashMap::new(),
         }
+    }
+
+    pub fn find_string(&self, string: &str) -> Option<NonZeroUsize> {
+        self.string_references.get(string).copied()
+    }
+
+    pub fn register(&mut self, string: impl Into<String>, reference: NonZeroUsize) {
+        let old_value = self.string_references.insert(string.into(), reference);
+        debug_assert!(old_value.is_none());
+    }
+
+    pub fn get_string_references(&self) -> impl Iterator<Item = NonZeroUsize> {
+        self.string_references.values().copied()
     }
 
     pub fn initialise_string_fields(
