@@ -4,12 +4,13 @@ use crate::{
     class_loader::ClassLoader,
     jvm_heap::JvmHeap,
     jvm_model::{
-        CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME, JVANKOM_PRINT_STEAM_CLASS_NAME,
-        JvmClass, JvmError, JvmResult, JvmThread, JvmValue, OBJECT_CLASS_NAME, SYSTEM_CLASS_NAME,
-        THROWABLE_CLASS_NAME,
+        ARRAY_CLASS_NAME, CLASS_CLASS_NAME, DOUBLE_CLASS_NAME, FLOAT_CLASS_NAME,
+        JVANKOM_PRINT_STEAM_CLASS_NAME, JvmClass, JvmError, JvmResult, JvmThread, JvmValue,
+        OBJECT_CLASS_NAME, SYSTEM_CLASS_NAME, THROWABLE_CLASS_NAME,
     },
 };
 
+mod array_methods;
 mod class_methods;
 mod double_methods;
 mod float_methods;
@@ -73,6 +74,12 @@ fn get_native_methods() -> Vec<(
             "getPrimitiveClass",
             "(Ljava/lang/String;)Ljava/lang/Class;",
             class_methods::get_primitive_class,
+        ),
+        (
+            CLASS_CLASS_NAME,
+            "getComponentType",
+            "()Ljava/lang/Class;",
+            class_methods::get_component_type,
         ),
         (
             FLOAT_CLASS_NAME,
@@ -139,6 +146,12 @@ fn get_native_methods() -> Vec<(
             "getClass",
             "()Ljava/lang/Class;",
             object_methods::get_class,
+        ),
+        (
+            ARRAY_CLASS_NAME,
+            "newArray",
+            "(Ljava/lang/Class;I)Ljava/lang/Object;",
+            array_methods::new_array,
         ),
     ]
 }

@@ -35,7 +35,7 @@ fn main() {
     let heap = JvmHeap::new(1000, 1000);
     let mut jvm = Jvm::new(class_loader, heap);
     let result = jvm.run_main(
-        "PrintTest".to_owned(),
+        "ListTest".to_owned(),
         vec!["Hello".to_owned(), "World!".to_owned()],
     );
 

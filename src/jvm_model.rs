@@ -28,6 +28,7 @@ pub const ARITHMETIC_EXCEPTION_NAME: &str = "java/lang/ArithmeticException";
 pub const ILLEGAL_ACCESS_ERROR_NAME: &str = "java/lang/IllegalAccessError";
 pub const CLASS_CAST_EXCEPTION_NAME: &str = "java/lang/ClassCastException";
 pub const THROWABLE_INTERFACE_NAME: &str = "java/lang/Throwable";
+pub const ARRAY_CLASS_NAME: &str = "java/lang/reflect/Array";
 pub const JVANKOM_PRINT_STEAM_CLASS_NAME: &str = "jvankomrt/JVankoMPrintStream";
 
 pub type JvmResult<T> = Result<T, Box<JvmError>>;
@@ -162,6 +163,7 @@ pub enum JvmError {
         field_name: String,
     },
     ExpectedArray,
+    ExpectedNonArrayObject,
     UnhandledException {
         reference: NonZeroUsize,
         class_name: String,
@@ -276,6 +278,7 @@ impl Display for JvmError {
                 format!("Static field not found: {class_name}.{field_name}")
             }
             JvmError::ExpectedArray => "Expected array object".to_owned(),
+            JvmError::ExpectedNonArrayObject => "Expected non-array object".to_owned(),
             JvmError::UnhandledException {
                 reference,
                 class_name,

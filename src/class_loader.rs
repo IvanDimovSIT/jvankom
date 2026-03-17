@@ -12,7 +12,7 @@ use zip::ZipArchive;
 use crate::{
     class_file::ClassFile,
     class_parser::{self, ClassParserError, UnverifiedClassFile},
-    jvm_model::{JvmClass, JvmError, JvmResult, THROWABLE_INTERFACE_NAME},
+    jvm_model::{JvmClass, JvmError, JvmResult, OBJECT_CLASS_NAME, THROWABLE_INTERFACE_NAME},
     verifier,
 };
 
@@ -45,6 +45,7 @@ impl Error for ClassLoaderError {}
 pub struct ClassLoader {
     loaded_classes: HashMap<String, Rc<JvmClass>>,
     throwable_class: Option<Rc<JvmClass>>,
+    object_class: Option<Rc<JvmClass>>,
     jars: Vec<ZipArchive<File>>,
     directories: Vec<String>,
 }
@@ -83,6 +84,7 @@ impl ClassLoader {
                 directories,
                 jars,
                 throwable_class: None,
+                object_class: None,
             })
         } else {
             Err(ClassLoaderError { invalid_sources })
@@ -100,6 +102,16 @@ impl ClassLoader {
             let throwable = self.get(THROWABLE_INTERFACE_NAME)?;
             self.throwable_class = Some(throwable.clone());
             Ok(throwable)
+        }
+    }
+
+    pub fn get_object_class(&mut self) -> JvmResult<Rc<JvmClass>> {
+        if let Some(object_class) = &self.object_class {
+            Ok(object_class.clone())
+        } else {
+            let object_class = self.get(OBJECT_CLASS_NAME)?;
+            self.object_class = Some(object_class.clone());
+            Ok(object_class)
         }
     }
 

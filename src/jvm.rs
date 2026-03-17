@@ -1482,6 +1482,43 @@ mod tests {
         test_string_pool_helper(20);
     }
 
+    #[test]
+    fn test_list_multiple() {
+        test_list_helper(vec![
+            "Hello".to_owned(),
+            "World!".to_owned(),
+            "Test".to_owned(),
+            "String".to_owned(),
+            "!!".to_owned(),
+        ]);
+    }
+
+    #[test]
+    fn test_list_one() {
+        test_list_helper(vec!["Hello".to_owned()]);
+    }
+
+    #[test]
+    fn test_list_empty() {
+        test_list_helper(vec![]);
+    }
+
+    fn test_list_helper(args: Vec<String>) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
+        jvm.run_main("ListTest".to_owned(), args.clone()).unwrap();
+
+        let log = PRINT_LOG.lock().unwrap().to_owned();
+        let lines: Vec<String> = log.lines().map(|s| s.to_owned()).collect();
+        let args_len = args.len();
+        assert_eq!(args_len + 1, lines.len());
+        for (i, arg) in args.into_iter().enumerate() {
+            assert_eq!(arg, lines[i]);
+        }
+        assert_eq!(format!("{}", args_len), *lines.last().unwrap());
+
+        PRINT_LOG.lock().unwrap().clear();
+    }
+
     fn test_string_pool_helper(count: i32) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
         let result = jvm
