@@ -1503,6 +1503,44 @@ mod tests {
         test_list_helper(vec![]);
     }
 
+    #[test]
+    fn test_lookup_switch_non_default() {
+        test_switch_helper("testLookupSwitchInt", 67, 67);
+    }
+
+    #[test]
+    fn test_lookup_switch_default() {
+        test_switch_helper("testLookupSwitchInt", -123, 99);
+    }
+
+    #[test]
+    fn test_table_switch_non_default() {
+        test_switch_helper("testTableSwitchInt", 4, 67);
+    }
+
+    #[test]
+    fn test_table_switch_default() {
+        test_switch_helper("testTableSwitchInt", -123, 99);
+    }
+
+    fn test_switch_helper(method: impl Into<String>, input: i32, expected: i32) {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
+        let result = jvm
+            .run_method(
+                "SwitchTest".to_owned(),
+                method.into(),
+                "(I)I".to_owned(),
+                vec![JvmValue::Int(input)],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => assert_eq!(expected, int),
+            _ => panic!("expected int"),
+        }
+    }
+
     fn test_list_helper(args: Vec<String>) {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
         jvm.run_main("ListTest".to_owned(), args.clone()).unwrap();

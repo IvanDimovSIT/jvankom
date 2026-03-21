@@ -99,6 +99,7 @@ pub const IXOR: u8 = 0x82;
 pub const LAND: u8 = 0x7f;
 pub const IINC: u8 = 0x84;
 pub const I2L: u8 = 0x85;
+pub const I2C: u8 = 0x92;
 pub const IFEQ: u8 = 0x99;
 pub const IFNE: u8 = 0x9a;
 pub const IFLT: u8 = 0x9b;
@@ -114,6 +115,8 @@ pub const IF_ICMPLE: u8 = 0xa4;
 pub const IF_ACMPEQ: u8 = 0xa5;
 pub const IF_ACMPNE: u8 = 0xa6;
 pub const GOTO: u8 = 0xa7;
+pub const TABLESWITCH: u8 = 0xaa;
+pub const LOOKUPSWITCH: u8 = 0xab;
 pub const IRETURN: u8 = 0xac;
 pub const DRETURN: u8 = 0xaf;
 pub const ARETURN: u8 = 0xb0;
@@ -215,6 +218,7 @@ impl BytecodeTable {
             (DUP_X1, dup_x1_instruction),
             (IINC, increment_instruction),
             (I2L, int_to_long_instruction),
+            (I2C, int_to_char_instruction),
             (IFEQ, if_equals_instruction),
             (IFNE, if_not_equals_instruction),
             (IFLT, if_less_than_instruction),
@@ -230,6 +234,8 @@ impl BytecodeTable {
             (IF_ACMPEQ, if_reference_equals_instruction),
             (IF_ACMPNE, if_reference_not_equals_instruction),
             (GOTO, goto_instruction),
+            (TABLESWITCH, table_switch_instruction),
+            (LOOKUPSWITCH, lookup_switch_instruction),
             (IRETURN, integer_return_instruction),
             (DRETURN, double_return_instruction),
             (ARETURN, object_return_instruction),
@@ -348,7 +354,6 @@ fn read_u8_from_bytecode(frame: &mut JvmStackFrame) -> u8 {
 
     let value = bytecode.code[frame.program_counter];
     frame.program_counter += 1;
-    debug_assert!(frame.program_counter < bytecode.code.len());
 
     value
 }
@@ -365,9 +370,38 @@ fn read_u16_from_bytecode(frame: &mut JvmStackFrame) -> u16 {
 
     let index_byte2 = bytecode.code[frame.program_counter] as u16;
     frame.program_counter += 1;
-    debug_assert!(frame.program_counter <= bytecode.code.len());
 
     (index_byte1 << 8) | index_byte2
+}
+
+/// read u32 from 4 bytecode values (moves PC forward by 4)
+#[inline]
+fn read_u32_from_bytecode(frame: &mut JvmStackFrame) -> u32 {
+    let bytecode =
+        frame.class.class_file.methods[frame.method_index].get_bytecode(frame.bytecode_index);
+
+    let index_byte1 = bytecode.code[frame.program_counter] as u32;
+    frame.program_counter += 1;
+    debug_assert!(frame.program_counter < bytecode.code.len());
+
+    let index_byte2 = bytecode.code[frame.program_counter] as u32;
+    frame.program_counter += 1;
+    debug_assert!(frame.program_counter <= bytecode.code.len());
+
+    let index_byte3 = bytecode.code[frame.program_counter] as u32;
+    frame.program_counter += 1;
+    debug_assert!(frame.program_counter <= bytecode.code.len());
+
+    let index_byte4 = bytecode.code[frame.program_counter] as u32;
+    frame.program_counter += 1;
+
+    (index_byte1 << 24) | (index_byte2 << 16) | (index_byte3 << 8) | index_byte4
+}
+
+/// read i32 from 4 bytecode values (moves PC forward by 4)
+#[inline]
+fn read_i32_from_bytecode(frame: &mut JvmStackFrame) -> i32 {
+    read_u32_from_bytecode(frame) as i32
 }
 
 #[inline]

@@ -4,6 +4,10 @@ pub fn int_to_long_instruction(context: JvmContext) -> JvmResult<()> {
     generic_conversion_instruction(context, pop_int, |int| JvmValue::Long(int as i64))
 }
 
+pub fn int_to_char_instruction(context: JvmContext) -> JvmResult<()> {
+    generic_conversion_instruction(context, pop_int, JvmValue::Int)
+}
+
 #[inline]
 fn generic_conversion_instruction<P, T, C>(
     context: JvmContext,
