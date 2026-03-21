@@ -109,6 +109,22 @@ macro_rules! throw_illegal_access_error {
     }};
 }
 
+///  throws an IncompatibleClassChangeError, $size is the size of the instruction
+#[macro_export]
+macro_rules! throw_incompatible_class_change_error {
+    ($frame:expr, $context:expr, $size:expr) => {{
+        const _CHECK_SIZE: () = assert!($size > 0);
+
+        $frame.program_counter -= $size - 1; // rewind
+        return $crate::exceptions::throw_jvm_exception(
+            $context.current_thread,
+            $context.heap,
+            $context.class_loader,
+            $crate::jvm_model::INCOMPATIBLE_CLASS_CHANGE_ERROR_NAME,
+        );
+    }};
+}
+
 ///  throws an java/lang/ClassCastException, $size is the size of the instruction
 #[macro_export]
 macro_rules! throw_class_cast_exception {

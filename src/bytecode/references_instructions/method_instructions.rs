@@ -14,7 +14,7 @@ use crate::{
         HeapObject, JvmClass, JvmContext, JvmError, JvmResult, JvmStackFrame, JvmValue,
         OBJECT_CLASS_NAME,
     },
-    throw_null_pointer_exception,
+    throw_incompatible_class_change_error, throw_null_pointer_exception,
     v_table::VTableEntry,
     validate_access,
 };
@@ -80,7 +80,7 @@ pub fn invoke_static_or_special_instruction<const IS_SPECIAL: bool>(
             .access_flags
             .check_flag(MethodAccessFlags::STATIC_FLAG)
     {
-        todo!("Throw IncopatibleClassChangeError")
+        throw_incompatible_class_change_error!(frame, context, INSTRUCTION_SIZE);
     }
     validate_access!(
         frame.class,
@@ -213,7 +213,7 @@ pub fn invoke_virtual_instruction(context: JvmContext) -> JvmResult<()> {
         .access_flags
         .check_flag(MethodAccessFlags::STATIC_FLAG)
     {
-        todo!("Throw IncopatibleClassChangeError")
+        throw_incompatible_class_change_error!(frame, context, INSTRUCTION_SIZE);
     }
     validate_access!(
         frame.class,
@@ -296,7 +296,7 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
     };
 
     if !JvmClass::is_sublcass_of(&interface, &object_class) {
-        todo!("Throw IncompatibleClassChangeError");
+        throw_incompatible_class_change_error!(frame, context, INSTRUCTION_SIZE);
     }
 
     let v_table_entry =
@@ -320,7 +320,7 @@ pub fn invoke_interface(context: JvmContext) -> JvmResult<()> {
         .access_flags
         .check_flag(MethodAccessFlags::STATIC_FLAG)
     {
-        todo!("Throw IncopatibleClassChangeError")
+        throw_incompatible_class_change_error!(frame, context, INSTRUCTION_SIZE);
     }
     validate_access!(
         frame.class,

@@ -26,6 +26,7 @@ pub const ARRAY_INDEX_OUT_OF_BOUNDS_EXCEPTION_NAME: &str =
 pub const ARRAY_STORE_EXCEPTION_NAME: &str = "java/lang/ArrayStoreException";
 pub const ARITHMETIC_EXCEPTION_NAME: &str = "java/lang/ArithmeticException";
 pub const ILLEGAL_ACCESS_ERROR_NAME: &str = "java/lang/IllegalAccessError";
+pub const INCOMPATIBLE_CLASS_CHANGE_ERROR_NAME: &str = "java/lang/IncompatibleClassChangeError";
 pub const CLASS_CAST_EXCEPTION_NAME: &str = "java/lang/ClassCastException";
 pub const THROWABLE_INTERFACE_NAME: &str = "java/lang/Throwable";
 pub const ARRAY_CLASS_NAME: &str = "java/lang/reflect/Array";
