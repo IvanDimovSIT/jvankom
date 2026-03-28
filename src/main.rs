@@ -22,7 +22,7 @@ mod verifier;
 
 fn main() {
     let class =
-        verifier::verify_class_file(class_parser::parse("test_classes/PrintTest.class").unwrap())
+        verifier::verify_class_file(class_parser::parse("test_classes/ScannerTest.class").unwrap())
             .unwrap();
     println!("File:\n{class:?}");
 
@@ -34,10 +34,7 @@ fn main() {
     .unwrap();
     let heap = JvmHeap::new(1000, 1000);
     let mut jvm = Jvm::new(class_loader, heap);
-    let result = jvm.run_main(
-        "ListTest".to_owned(),
-        vec!["Hello".to_owned(), "World!".to_owned()],
-    );
+    let result = jvm.run_main("ScannerTest".to_owned(), vec![]);
 
     if let Err(err) = result {
         println!("\n\tERROR: {err}\n");

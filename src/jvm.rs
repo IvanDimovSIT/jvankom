@@ -353,6 +353,7 @@ mod tests {
         },
         native_method_resolver::PRINT_LOG,
     };
+    use sequential_test::sequential;
 
     use super::*;
 
@@ -1427,26 +1428,31 @@ mod tests {
     }
 
     #[test]
+    #[sequential]
     fn test_cache_interface_many() {
         test_cache_interface_helper(100);
     }
 
     #[test]
+    #[sequential]
     fn test_print_hello_world() {
         test_print_helper("testPrintSimple", "Hello, World!\n");
     }
 
     #[test]
+    #[sequential]
     fn test_print_int() {
         test_print_helper("testPrintInteger", "67\n");
     }
 
     #[test]
+    #[sequential]
     fn test_print_float() {
         test_print_helper("testPrintFloat", "0.2\n0.1");
     }
 
     #[test]
+    #[sequential]
     fn test_run_main() {
         let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
         let args = vec!["Hello".to_owned(), "World".to_owned(), "!!!".to_owned()];
@@ -1483,6 +1489,7 @@ mod tests {
     }
 
     #[test]
+    #[sequential]
     fn test_list_multiple() {
         test_list_helper(vec![
             "Hello".to_owned(),
@@ -1494,11 +1501,13 @@ mod tests {
     }
 
     #[test]
+    #[sequential]
     fn test_list_one() {
         test_list_helper(vec!["Hello".to_owned()]);
     }
 
     #[test]
+    #[sequential]
     fn test_list_empty() {
         test_list_helper(vec![]);
     }
@@ -1521,6 +1530,43 @@ mod tests {
     #[test]
     fn test_table_switch_default() {
         test_switch_helper("testTableSwitchInt", -123, 99);
+    }
+
+    #[test]
+    fn test_hash_code_string() {
+        test_hash_code_helper("stringHash", 341682506);
+    }
+
+    #[test]
+    fn test_hash_code_int() {
+        test_hash_code_helper("intHash", 67);
+    }
+
+    #[test]
+    fn test_hash_code_object() {
+        let _ = test_hash_code_get_value("objectHash");
+    }
+
+    fn test_hash_code_get_value(method: impl Into<String>) -> i32 {
+        let mut jvm = create_jvm(vec![ClassSource::Directory("test_classes/".to_owned())]);
+        let result = jvm
+            .run_method(
+                "HashCodeTest".to_owned(),
+                method.into(),
+                "()I".to_owned(),
+                vec![],
+            )
+            .unwrap()
+            .unwrap();
+
+        match result {
+            JvmValue::Int(int) => int,
+            _ => panic!("expected int"),
+        }
+    }
+
+    fn test_hash_code_helper(method: impl Into<String>, expected: i32) {
+        assert_eq!(expected, test_hash_code_get_value(method));
     }
 
     fn test_switch_helper(method: impl Into<String>, input: i32, expected: i32) {

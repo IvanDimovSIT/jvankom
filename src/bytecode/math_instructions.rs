@@ -34,7 +34,7 @@ pub fn integer_subtract_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn integer_muliply_instruction(context: JvmContext) -> JvmResult<()> {
-    generic_two_operand_instruction(context, pop_int, |a, b| JvmValue::Int(a * b))
+    generic_two_operand_instruction(context, pop_int, |a, b| JvmValue::Int(a.wrapping_mul(b)))
 }
 
 pub fn integer_and_instruction(context: JvmContext) -> JvmResult<()> {
@@ -85,7 +85,7 @@ pub fn long_and_instruction(context: JvmContext) -> JvmResult<()> {
 }
 
 pub fn long_add_instruction(context: JvmContext) -> JvmResult<()> {
-    generic_two_operand_instruction(context, pop_long, |a, b| JvmValue::Long(a + b))
+    generic_two_operand_instruction(context, pop_long, |a, b| JvmValue::Long(a.wrapping_add(b)))
 }
 
 pub fn shift_left_long_instruction(context: JvmContext) -> JvmResult<()> {
